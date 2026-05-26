@@ -76,11 +76,19 @@ export function updateGame() {
         }
         if (removed) continue;
 
+        // Určit tým střelce projektilu
+        const shooterTeam = b.ownerId === state.playerId ? state.teamId : (state.activePlayers[b.ownerId]?.teamId || 2);
+
         if (b.ownerId === state.playerId) {
             // Zásah nepřítele (klientský hit detect)
             for (const id in state.activePlayers) {
                 const enemy = state.activePlayers[id];
                 if (enemy.hp <= 0) continue;
+                
+                // Přeskočit, pokud je to spojenec ze stejného týmu (Friendly Fire vypnuto)
+                const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? state.aiBots.find(b => b.id === id)?.teamId : 2);
+                if (enemyTeam === shooterTeam) continue;
+
                 if (Math.hypot(b.x - enemy.x, b.y - enemy.y) < 30) {
                     spawnHitMarker(b.x, b.y);
                     state.localBullets.splice(i, 1);
@@ -98,6 +106,9 @@ export function updateGame() {
         } else {
             // Zásah lokálního hráče
             if (Math.hypot(b.x - p.x, b.y - p.y) < p.radius && p.hp > 0) {
+                // Přeskočit, pokud je to spojenec ze stejného týmu
+                if (p.teamId === shooterTeam) continue;
+
                 p.hp = Math.max(0, p.hp - b.damage);
                 spawnHitMarker(b.x, b.y);
                 playSound('hit');
@@ -146,18 +157,23 @@ export function updateGame() {
         if (p.hp <= 0) handleDeath('Zóna');
     }
 
-    // 7. Kontrola konce hry (pokud zbýváš pouze ty, vyhráváš!)
+    // 7. Kontrola konce hry (pokud zbýváš pouze ty / tvůj tým, vyhráváš!)
     if (state.gameActive && p.hp > 0) {
-        let otherAlive = 0;
+        let enemyAlive = 0;
         for (const id in state.activePlayers) {
-            if (state.activePlayers[id].hp > 0) {
-                otherAlive++;
+            const enemy = state.activePlayers[id];
+            if (enemy.hp > 0) {
+                // Přičíst pouze pokud je nepřítel z cizího týmu
+                const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? state.aiBots.find(b => b.id === id)?.teamId : 2);
+                if (enemyTeam !== p.teamId) {
+                    enemyAlive++;
+                }
             }
         }
         
-        // Povolit výhru až po uplynutí krátké ochranné doby (např. 6 vteřin od začátku kola)
+        // Povolit výhru po 6 vteřinách
         const elapsed = (Date.now() - state.playStartTime) / 1000;
-        if (elapsed > 6 && otherAlive === 0) {
+        if (elapsed > 6 && enemyAlive === 0) {
             handleWin();
         }
     }
@@ -182,12 +198,12 @@ export function spawnHitMarker(x, y) {
 export async function handleWin() {
     if (!state.gameActive) return;
     state.gameActive = false;
-    playSound('heal'); // Přehrát pozitivní vítězný zvuk!
+    playSound('heal'); // pozitivní zvuk
     if (state.networkInterval) { clearInterval(state.networkInterval); state.networkInterval = null; }
     if (state.botInterval) { clearInterval(state.botInterval); state.botInterval = null; }
 
     const card = document.querySelector('.death-card');
-    if (card) card.style.borderColor = 'rgba(16, 185, 129, 0.6)'; // Mint glow
+    if (card) card.style.borderColor = 'rgba(16, 185, 129, 0.6)'; // Zelená záře
 
     const title = document.querySelector('.death-card h2');
     if (title) {
@@ -202,7 +218,7 @@ export async function handleWin() {
         icon.style.borderColor = 'rgba(52, 211, 153, 0.5)';
     }
 
-    document.getElementById('death-killer-text').textContent = 'Gratulujeme, zlikvidoval jsi všechny soupeře a ovládl bojiště!';
+    document.getElementById('death-killer-text').textContent = 'Gratulujeme, tvůj tým eliminoval všechny soupeře a ovládl bojiště!';
     document.getElementById('death-stat-kills').textContent  = state.localPlayer.kills;
     
     const elapsed = Math.floor((Date.now() - state.playStartTime) / 1000);
@@ -222,7 +238,7 @@ export async function handleDeath(killerId) {
     if (state.botInterval) { clearInterval(state.botInterval); state.botInterval = null; }
 
     const card = document.querySelector('.death-card');
-    if (card) card.style.borderColor = 'rgba(220, 38, 38, 0.3)'; // Red glow
+    if (card) card.style.borderColor = 'rgba(220, 38, 38, 0.3)'; // Červená záře
 
     const title = document.querySelector('.death-card h2');
     if (title) {
@@ -258,17 +274,38 @@ export async function handleDeath(killerId) {
 // AI BOTI – LOGIKA
 // =============================================
 
-let botSyncCounter = 0;
-
 export function spawnAIBots(count) {
     state.aiBots = [];
+    
+    // Tvorba botů na základě herního módu
     for (let i = 0; i < count; i++) {
         const botId = `bot_${state.currentRoomId}_${i}`;
         const names = ['Rex', 'Buster', 'Viper', 'Spike', 'Shadow', 'Ghost', 'Alpha', 'Bravo', 'Hunter', 'Blade', 'Zero', 'Apex', 'Ranger', 'Titan', 'Slayer'];
-        const botName = `BOT ${names[i % names.length]}`;
+        let botName = `BOT ${names[i % names.length]}`;
         const colors = ['#eab308', '#ec4899', '#a855f7', '#06b6d4', '#f43f5e'];
-        const botColor = colors[Math.floor(Math.random() * colors.length)];
+        let botColor = colors[Math.floor(Math.random() * colors.length)];
         
+        let team = i + 2; // výchozí chování (každý sám za sebe)
+        
+        if (state.gameMode === 'solo') {
+            team = i + 2;
+        } else if (state.gameMode === 'duo') {
+            if (count === 19) {
+                // Hrajeme s AI parťákem! (bot 0 je náš spojenec)
+                if (i === 0) {
+                    team = 1; // Team 1 s námi!
+                    botName = `PARŤÁK ${names[0]}`;
+                    botColor = '#34d399'; // Mintově zelená barva pro společníka
+                } else {
+                    // Ostatních 18 botů je rozděleno po dvojicích do týmů 2 až 10
+                    team = Math.floor((i - 1) / 2) + 2;
+                }
+            } else {
+                // Hrajeme ve dvou reálných hráčích. Všichni boti tvoří týmy po dvou od Teamu 2
+                team = Math.floor(i / 2) + 2;
+            }
+        }
+
         const bot = {
             id: botId,
             name: botName,
@@ -284,6 +321,7 @@ export function spawnAIBots(count) {
             lastShotTime: 0,
             radius: 28,
             roomId: state.currentRoomId,
+            teamId: team,
             bulletsToSend: []
         };
         
@@ -291,14 +329,14 @@ export function spawnAIBots(count) {
         updateBotOnAppwrite(bot);
     }
 
-    // Host spouští pravidelný sync botů do DB každých 120ms
+    // Host spouští sync botů každých 120ms
     if (state.botInterval) clearInterval(state.botInterval);
     state.botInterval = setInterval(() => {
         if (state.isHost && state.aiBots) {
             state.aiBots.forEach(bot => {
                 if (bot.hp > 0 || bot.killedBy) {
                     updateBotOnAppwrite(bot);
-                    bot.bulletsToSend = []; // reset po odeslání
+                    bot.bulletsToSend = [];
                 }
             });
         }
@@ -319,12 +357,12 @@ export function updateAIBots() {
         
         let targetAngle = bot.angle;
         
-        // Najít nejbližšího nepřítele (reálného hráče) k zacílení
+        // Najít nejbližšího nepřítele z cizího týmu
         let nearestEnemy = null;
         let minDist = 750;
         
         // Kontrola lokálního hráče
-        if (state.localPlayer && state.localPlayer.hp > 0) {
+        if (state.localPlayer && state.localPlayer.hp > 0 && state.localPlayer.teamId !== bot.teamId) {
             const dist = Math.hypot(bot.x - state.localPlayer.x, bot.y - state.localPlayer.y);
             if (dist < minDist) {
                 minDist = dist;
@@ -332,10 +370,15 @@ export function updateAIBots() {
             }
         }
         
-        // Kontrola ostatních lidských hráčů v místnosti
+        // Kontrola ostatních hráčů (reálných i AI)
         for (const pid in state.activePlayers) {
             const enemy = state.activePlayers[pid];
-            if (pid.startsWith('bot_') || enemy.hp <= 0) continue;
+            if (enemy.hp <= 0) continue;
+            
+            // Ověřit, zda je nepřítel z cizího týmu
+            const enemyTeam = enemy.teamId || (pid.startsWith('bot_') ? state.aiBots.find(b => b.id === pid)?.teamId : 2);
+            if (enemyTeam === bot.teamId) continue; // stejný tým, ignorovat!
+
             const dist = Math.hypot(bot.x - enemy.x, bot.y - enemy.y);
             if (dist < minDist) {
                 minDist = dist;
@@ -344,20 +387,19 @@ export function updateAIBots() {
         }
         
         if (nearestEnemy) {
-            // Cíl nalezen, zamířit
+            // Zaměřit cíl
             targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
             
-            // Pohyb směrem k němu nebo úkroky
+            // Pohyb k cíli
             if (minDist > 180) {
                 moveX = Math.cos(targetAngle) * bot.speed;
                 moveY = Math.sin(targetAngle) * bot.speed;
             } else {
-                // Úkrok do strany
                 moveX = -Math.sin(targetAngle) * bot.speed;
                 moveY = Math.cos(targetAngle) * bot.speed;
             }
             
-            // Střelba v náhodném intervalu
+            // Střelba
             const now = Date.now();
             if (now - bot.lastShotTime > 1300 + Math.random() * 900) {
                 bot.lastShotTime = now;
@@ -380,7 +422,6 @@ export function updateAIBots() {
                     timestamp: now,
                 });
                 
-                // Přehrát zvuk střelby, pokud je poblíž lokálního hráče
                 if (state.localPlayer && Math.hypot(bot.x - state.localPlayer.x, bot.y - state.localPlayer.y) < 1000) {
                     playSound('shoot_rifle');
                 }
@@ -399,14 +440,13 @@ export function updateAIBots() {
                 });
             }
         } else {
-            // Žádný nepřítel, jít do bezpečné zóny nebo bloudit
+            // Není cíl -> jít do zóny nebo bloudit
             if (dToCenter > zone.radius * 0.75) {
                 const a = Math.atan2(zone.center.y - bot.y, zone.center.x - bot.x);
                 targetAngle = a;
                 moveX = Math.cos(a) * bot.speed;
                 moveY = Math.sin(a) * bot.speed;
             } else {
-                // Pomalé potulování
                 const wanderAngle = bot.angle + (Math.random() - 0.5) * 0.4;
                 targetAngle = wanderAngle;
                 moveX = Math.cos(wanderAngle) * (bot.speed * 0.4);
@@ -414,7 +454,7 @@ export function updateAIBots() {
             }
         }
         
-        // Vykonání pohybu
+        // Pohyb botů
         bot.x = Math.max(bot.radius, Math.min(MAP_SIZE - bot.radius, bot.x + moveX));
         bot.y = Math.max(bot.radius, Math.min(MAP_SIZE - bot.radius, bot.y + moveY));
         
@@ -436,7 +476,7 @@ export function updateAIBots() {
             }
         });
         
-        // Zóna zranění botů
+        // Poškození zónou
         if (dToCenter > zone.radius) {
             bot.hp = Math.max(0, bot.hp - (zone.state === 'collapsing' ? 0.8 : 0.35));
             if (bot.hp <= 0) {
@@ -444,7 +484,7 @@ export function updateAIBots() {
             }
         }
 
-        // Kopírovat pozici bota pro okamžité, plynulé vykreslení na hostovi bez Appwrite lagu
+        // Host render optim
         if (bot.hp > 0) {
             if (!state.activePlayers[bot.id]) {
                 state.activePlayers[bot.id] = { ...bot, targetX: bot.x, targetY: bot.y };
@@ -458,6 +498,7 @@ export function updateAIBots() {
                     currentWeapon: bot.currentWeapon,
                     color: bot.color,
                     name: bot.name,
+                    teamId: bot.teamId,
                     targetX: bot.x,
                     targetY: bot.y
                 });
@@ -481,7 +522,8 @@ export async function updateBotOnAppwrite(bot) {
         activeBullets: JSON.stringify(bot.bulletsToSend || []),
         lastUpdate:    Date.now(),
         killedBy:      bot.killedBy || '',
-        roomId:        bot.roomId
+        roomId:        bot.roomId,
+        teamId:        bot.teamId
     };
     
     try {

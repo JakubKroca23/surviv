@@ -15,6 +15,8 @@ export const state = {
     isHost:          false,
     sublobbyUnsub:   null,
     messagesUnsub:   null,
+    gameMode:        'solo', // 'solo' nebo 'duo'
+    teamId:          1,      // ID týmu (1 pro místní tým)
 
     // Hráči
     localPlayer:   null,

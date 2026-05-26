@@ -39,17 +39,26 @@ export async function initAppwriteAndJoin() {
         state.currentUser = await account.get();
         console.log('✅ Appwrite: přihlášen. ID:', state.playerId);
 
-        const btn = document.getElementById('btn-play');
-        btn.disabled = false;
-        btn.textContent = 'VYHLEDAT ZÁPAS';
-        btn.classList.add('ready');
+        // Povolit tlačítka v lobby
+        const btnSolo = document.getElementById('btn-solo');
+        const btnDuo = document.getElementById('btn-duo');
+        
+        // Zkontrolovat přezdívku a povolit podle vstupu
+        const input = document.getElementById('nickname-input');
+        const updateButtons = () => {
+            const ready = input.value.trim().length >= 2;
+            btnSolo.disabled = !ready;
+            btnDuo.disabled = !ready;
+            btnSolo.classList.toggle('ready', ready);
+            btnDuo.classList.toggle('ready', ready);
+        };
+        input.addEventListener('input', updateButtons);
+        updateButtons();
 
         await fetchAllPlayers();
         subscribeToPlayers();
     } catch (err) {
         console.error('❌ Appwrite init chyba:', err);
-        const btn = document.getElementById('btn-play');
-        btn.textContent = '❌ Chyba připojení – obnovte stránku';
     }
 }
 
@@ -152,40 +161,61 @@ function handleRealtimeEvent(response) {
 }
 
 // =============================================
-// JUMP-IN LOBBY (MATCHMAKING)
+// SOLO INSTANT GAME
 // =============================================
 
-export async function joinOrCreateActiveLobby() {
-    if (!state.currentUser) return;
+export function startSoloGame() {
+    state.gameMode = 'solo';
+    state.currentRoomId = 'solo_' + state.playerId + '_' + Date.now();
+    state.isHost = true;
+    state.teamId = 1; // náš tým
+    
+    if (window.startLocalGame) {
+        window.startLocalGame();
+    }
+}
 
-    const btn = document.getElementById('btn-play');
-    btn.disabled = true;
-    btn.textContent = 'Vyhledávání lobby...';
+// =============================================
+// DUO MATCHMAKING
+// =============================================
+
+export async function joinOrCreateDuoLobby() {
+    if (!state.currentUser) return;
+    
+    state.gameMode = 'duo';
+    state.teamId = 1; // Team 1
+
+    const btnSolo = document.getElementById('btn-solo');
+    const btnDuo = document.getElementById('btn-duo');
+    btnSolo.disabled = true;
+    btnDuo.disabled = true;
+    btnDuo.textContent = 'Vyhledávám duo parťáka...';
 
     try {
-        // Vyhledat všechny místnosti, které jsou ve stavu 'waiting' a nejsou starší než 30 vteřin
+        // Vyhledat platné Duo lobby
         const res = await databases.listDocuments(DATABASE_ID, ROOMS_COLLECTION_ID, [
             Query.equal('status', 'waiting'),
             Query.greaterThan('lastUpdate', Date.now() - 30000),
             Query.limit(10),
         ]);
 
-        if (res.documents.length > 0) {
-            // Najít nejstarší platnou místnost (která ještě neskončila)
-            const room = res.documents[0];
-            console.log('✅ Nalezeno aktivní lobby. Připojuji se k:', room.$id);
+        const duoRooms = res.documents.filter(r => r.name.startsWith('Duo_'));
+
+        if (duoRooms.length > 0) {
+            const room = duoRooms[0];
+            console.log('✅ Nalezeno aktivní Duo lobby. Připojuji se...');
             await joinRoom(room.$id);
         } else {
-            // Vytvořit novou místnost (lobby)
-            console.log('➕ Žádné aktivní lobby nenalezeno. Vytvářím nové...');
+            console.log('➕ Žádné Duo lobby. Zakládám nové...');
             const nick = document.getElementById('nickname-input').value.trim() || 'Hráč';
-            await createRoom(`Lobby od ${nick}`);
+            await createRoom(`Duo_${nick}`);
         }
     } catch (err) {
         console.error('Matchmaking chyba:', err);
-        alert('Nepodařilo se připojit k matchmakingu.');
-        btn.disabled = false;
-        btn.textContent = 'VYHLEDAT ZÁPAS';
+        alert('Nepodařilo se vyhledat Duo lobby.');
+        btnSolo.disabled = false;
+        btnDuo.disabled = false;
+        btnDuo.textContent = 'DUO HRA';
     }
 }
 
@@ -197,7 +227,7 @@ export async function createRoom(roomName) {
         hostId: state.playerId,
         status: 'waiting',
         aiCount: 0,
-        lastUpdate: creationTime // slouží jako čas vzniku
+        lastUpdate: creationTime
     };
     
     try {
@@ -212,13 +242,14 @@ export async function createRoom(roomName) {
         state.isHost = true;
         
         showScreen('sublobby-screen');
+        document.getElementById('sublobby-title').textContent = 'DUO MATCHMAKING';
         
         if (state.localPlayer) {
             state.localPlayer.roomId = roomId;
         }
         
         subscribeToSublobby(roomId);
-        await sendChatMessage('SYSTEM', `Nové lobby bylo otevřeno. Čeká se na další bojovníky!`);
+        await sendChatMessage('SYSTEM', `Nové Duo lobby založeno. Čekáme na parťáka!`);
         updateSublobbyInfo();
     } catch (err) {
         throw err;
@@ -234,6 +265,7 @@ export async function joinRoom(roomId) {
         state.isHost = false;
         
         showScreen('sublobby-screen');
+        document.getElementById('sublobby-title').textContent = 'DUO MATCHMAKING';
         
         if (state.localPlayer) {
             state.localPlayer.roomId = roomId;
@@ -242,7 +274,7 @@ export async function joinRoom(roomId) {
         subscribeToSublobby(roomId);
         
         const nick = document.getElementById('nickname-input').value.trim() || 'Bojovník';
-        await sendChatMessage('SYSTEM', `${nick} vstoupil do lobby.`);
+        await sendChatMessage('SYSTEM', `${nick} se připojil. Duo je připraveno!`);
         updateSublobbyInfo();
     } catch (err) {
         throw err;
@@ -252,10 +284,10 @@ export async function joinRoom(roomId) {
 export async function leaveRoom(sendSystemMsg = true) {
     if (!state.currentRoomId) return;
     
-    if (sendSystemMsg) {
+    if (sendSystemMsg && !state.currentRoomId.startsWith('solo_')) {
         const nick = document.getElementById('nickname-input').value.trim() || 'Bojovník';
         if (state.isHost) {
-            await sendChatMessage('SYSTEM', `Zakladatel opustil lobby. Lobby bude zrušeno.`);
+            await sendChatMessage('SYSTEM', `Duo lobby bylo zrušeno zakladatelem.`);
         } else {
             await sendChatMessage('SYSTEM', `${nick} opustil lobby.`);
         }
@@ -280,7 +312,7 @@ export async function leaveRoom(sendSystemMsg = true) {
         } catch {}
     }
     
-    if (oldIsHost) {
+    if (oldIsHost && !oldRoomId.startsWith('solo_')) {
         try {
             await databases.deleteDocument(DATABASE_ID, ROOMS_COLLECTION_ID, oldRoomId);
         } catch (err) {
@@ -288,15 +320,17 @@ export async function leaveRoom(sendSystemMsg = true) {
         }
     }
     
-    const btn = document.getElementById('btn-play');
-    btn.disabled = false;
-    btn.textContent = 'VYHLEDAT ZÁPAS';
+    const btnSolo = document.getElementById('btn-solo');
+    const btnDuo = document.getElementById('btn-duo');
+    btnSolo.disabled = false;
+    btnDuo.disabled = false;
+    btnDuo.textContent = 'DUO HRA';
     
     showScreen('lobby-screen');
 }
 
 // =============================================
-// AUTOMATICKÝ COUNTER & START LOBBY
+// DUO COUNTER (15s nebo okamžitě při 2 hráčích)
 // =============================================
 
 function startLobbyCountdown() {
@@ -309,31 +343,40 @@ function startLobbyCountdown() {
         }
 
         const elapsed = Date.now() - state.currentRoom.lastUpdate;
-        const timeLeft = Math.max(0, 30 - Math.floor(elapsed / 1000));
+        const timeLeft = Math.max(0, 15 - Math.floor(elapsed / 1000));
+        
+        // Zjistit aktuální počet reálných hráčů
+        const playerCount = Object.values(state.rawPlayers).filter(p => p.roomId === state.currentRoomId).length + 1;
         
         const indicator = document.getElementById('sublobby-host-indicator');
         if (indicator) {
-            indicator.textContent = timeLeft > 0 ? `Zápas začíná za: ${timeLeft} s` : 'Startuji zápas...';
+            if (playerCount >= 2) {
+                indicator.textContent = 'Parťák nalezen! Startuji zápas...';
+            } else {
+                indicator.textContent = `Hledám parťáka... Zápas začne za: ${timeLeft} s`;
+            }
         }
 
-        if (timeLeft <= 0 && state.isHost && state.currentRoom.status === 'waiting') {
-            stopLobbyCountdown();
-            
-            // Spočítat reálné lidi v místnosti
-            const playerCount = Object.values(state.rawPlayers).filter(p => p.roomId === state.currentRoomId).length + 1; // + host
-            
-            // Doplnění boty do 20 hráčů
-            const botsNeeded = Math.max(0, 20 - playerCount);
-            console.log(`🎮 Matchmaker startuje hru! Hráči: ${playerCount}, AI Boti: ${botsNeeded}`);
+        // Hostitel spouští hru okamžitě, pokud jsou v místnosti 2 hráči, nebo při vypršení 15s limitu
+        if (state.isHost && state.currentRoom.status === 'waiting') {
+            if (playerCount >= 2 || timeLeft <= 0) {
+                stopLobbyCountdown();
+                
+                // V DUO je 10 týmů po 2 hráčích.
+                // Pokud hrajeme s botem (playerCount = 1), bot dostane stejný teamId = 1.
+                // Celkem 20 hráčů (lidé + 18 nebo 19 botů).
+                const botsNeeded = 20 - playerCount;
+                console.log(`🎮 Matchmaker startuje DUO! Hráči: ${playerCount}, AI Boti: ${botsNeeded}`);
 
-            try {
-                await databases.updateDocument(DATABASE_ID, ROOMS_COLLECTION_ID, state.currentRoomId, {
-                    status: 'playing',
-                    aiCount: botsNeeded,
-                    lastUpdate: Date.now() // aktualizace keep alive
-                });
-            } catch (err) {
-                console.error('Chyba při automatickém startu hry:', err);
+                try {
+                    await databases.updateDocument(DATABASE_ID, ROOMS_COLLECTION_ID, state.currentRoomId, {
+                        status: 'playing',
+                        aiCount: botsNeeded,
+                        lastUpdate: Date.now()
+                    });
+                } catch (err) {
+                    console.error('Chyba při startu Duo hry:', err);
+                }
             }
         }
     }, 1000);
@@ -351,6 +394,8 @@ function stopLobbyCountdown() {
 // =============================================
 
 export function subscribeToSublobby(roomId) {
+    if (roomId.startsWith('solo_')) return; // solo nepotřebuje sublobby síť
+    
     if (state.sublobbyUnsub) state.sublobbyUnsub();
     if (state.messagesUnsub) state.messagesUnsub();
     
@@ -390,6 +435,7 @@ export function subscribeToSublobby(roomId) {
 }
 
 export async function fetchChatMessages(roomId) {
+    if (roomId.startsWith('solo_')) return;
     try {
         const res = await databases.listDocuments(DATABASE_ID, MESSAGES_COLLECTION_ID, [
             Query.equal('roomId', roomId),
@@ -403,7 +449,7 @@ export async function fetchChatMessages(roomId) {
 }
 
 export async function sendChatMessage(sender, text) {
-    if (!state.currentRoomId) return;
+    if (!state.currentRoomId || state.currentRoomId.startsWith('solo_')) return;
     
     const payload = {
         roomId: state.currentRoomId,
@@ -427,7 +473,6 @@ export function updateSublobbyInfo() {
     if (!state.currentRoomId) return;
     
     const roomPlayers = [];
-    
     const localNick = document.getElementById('nickname-input').value.trim();
     roomPlayers.push({
         $id: state.playerId,
@@ -472,6 +517,7 @@ export async function updatePlayerOnAppwrite() {
         lastUpdate:    Date.now(),
         killedBy:      '',
         roomId:        state.currentRoomId || '',
+        teamId:        state.teamId || 1
     };
 
     try {

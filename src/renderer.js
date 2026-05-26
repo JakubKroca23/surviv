@@ -52,17 +52,19 @@ export function drawGame() {
         if (e.hp > 0) {
             // Zjistit, zda je nepřítel schovaný pod stromem
             let isHidden = false;
-            for (const obs of state.mapObstacles) {
-                if (obs.type === 'tree' && obs.hp > 0) {
-                    const distEnemy = Math.hypot(e.x - obs.x, e.y - obs.y);
-                    if (distEnemy < obs.radius * 1.5) {
-                        // Nepřítel je pod tímto stromem!
-                        // Je lokální hráč pod stejným stromem?
-                        const distLocal = Math.hypot(p.x - obs.x, p.y - obs.y);
-                        if (distLocal >= obs.radius * 1.5) {
-                            // Lokální hráč není pod stejným stromem -> nepřítel je skrytý!
-                            isHidden = true;
-                            break;
+            if (e.teamId !== p.teamId) {
+                for (const obs of state.mapObstacles) {
+                    if (obs.type === 'tree' && obs.hp > 0) {
+                        const distEnemy = Math.hypot(e.x - obs.x, e.y - obs.y);
+                        if (distEnemy < obs.radius * 1.5) {
+                            // Nepřítel je pod tímto stromem!
+                            // Je lokální hráč pod stejným stromem?
+                            const distLocal = Math.hypot(p.x - obs.x, p.y - obs.y);
+                            if (distLocal >= obs.radius * 1.5) {
+                                // Lokální hráč není pod stejným stromem -> nepřítel je skrytý!
+                                isHidden = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -423,14 +425,16 @@ function drawMinimap() {
         if (e.hp > 0) {
             // Zjistit schování pod stromem
             let isHidden = false;
-            for (const obs of state.mapObstacles) {
-                if (obs.type === 'tree' && obs.hp > 0) {
-                    const distEnemy = Math.hypot(e.x - obs.x, e.y - obs.y);
-                    if (distEnemy < obs.radius * 1.5) {
-                        const distLocal = Math.hypot(p.x - obs.x, p.y - obs.y);
-                        if (distLocal >= obs.radius * 1.5) {
-                            isHidden = true;
-                            break;
+            if (e.teamId !== p.teamId) {
+                for (const obs of state.mapObstacles) {
+                    if (obs.type === 'tree' && obs.hp > 0) {
+                        const distEnemy = Math.hypot(e.x - obs.x, e.y - obs.y);
+                        if (distEnemy < obs.radius * 1.5) {
+                            const distLocal = Math.hypot(p.x - obs.x, p.y - obs.y);
+                            if (distLocal >= obs.radius * 1.5) {
+                                isHidden = true;
+                                break;
+                            }
                         }
                     }
                 }

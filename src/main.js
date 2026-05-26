@@ -5,7 +5,8 @@ import {
     updatePlayerOnAppwrite, 
     removePlayerFromAppwrite, 
     fetchAllPlayers,
-    joinOrCreateActiveLobby,
+    startSoloGame,
+    joinOrCreateDuoLobby,
     leaveRoom,
     sendChatMessage
 } from './network.js';
@@ -30,15 +31,7 @@ window.onload = async () => {
     // Globální funkce pro HTML skiny
     window.setSkin = (color) => setSkin(color);
 
-    // Nickname input → povolit vyhledávání zápasu
     const input  = document.getElementById('nickname-input');
-    const btnPlay = document.getElementById('btn-play');
-    input.addEventListener('input', () => {
-        const ready = input.value.trim().length >= 2;
-        btnPlay.disabled = !ready;
-        btnPlay.classList.toggle('ready', ready);
-        if (ready) btnPlay.textContent = 'VYHLEDAT ZÁPAS';
-    });
 
     // Joysticky (mobil)
     if (state.isMobile) {
@@ -57,11 +50,18 @@ window.onload = async () => {
         resetGame();
     });
 
-    // Spustit matchmaking (vyhledat / vytvořit lobby)
-    btnPlay.addEventListener('click', () => {
+    // Spustit SOLO hru (okamžitě proti botům)
+    document.getElementById('btn-solo').addEventListener('click', () => {
         const name = input.value.trim();
         if (!name || name.length < 2) return;
-        joinOrCreateActiveLobby();
+        startSoloGame();
+    });
+
+    // Spustit DUO matchmaking
+    document.getElementById('btn-duo').addEventListener('click', () => {
+        const name = input.value.trim();
+        if (!name || name.length < 2) return;
+        joinOrCreateDuoLobby();
     });
 
     // Zrušit hledání zápasu (opustit lobby)
@@ -129,14 +129,21 @@ window.startLocalGame = () => {
     // Inicializuj lokálního hráče
     state.localPlayer = new Player(state.playerId, name, state.selectedSkin);
     state.localPlayer.roomId = state.currentRoomId;
-    
+    state.localPlayer.teamId = state.teamId;
+
     // Vygeneruj mapu & loot
     state.mapObstacles  = generateObstacles();
     state.itemsOnGround = generateSpawnedLoot();
 
     // Vygenerovat AI boty na hostu (doplnit do 20)
-    if (state.isHost && state.currentRoom && state.currentRoom.aiCount > 0) {
-        spawnAIBots(state.currentRoom.aiCount);
+    // Pokud je SOLO: spawne se 19 botů, každý v jiném nepřátelském týmu (týmy 2 až 20)
+    // Pokud je DUO: spawne se 18 nebo 19 botů, parťák dostane stejný Team 1, ostatní boti tvoří týmy po 2
+    if (state.isHost) {
+        let botsCount = 19; // solo default
+        if (state.gameMode === 'duo' && state.currentRoom) {
+            botsCount = state.currentRoom.aiCount || 18;
+        }
+        spawnAIBots(botsCount);
     }
 
     state.gameActive  = true;
@@ -149,6 +156,7 @@ window.startLocalGame = () => {
     updateOnlineList();
 
     // Pravidelná synchronizace s Appwrite (120ms)
+    // Pokud hrajeme SOLO, nemusíme neustále spamovat DB, stačí jednou při startu a konci, ale abychom se viděli v online hráčích, můžeme nechat sync
     state.networkInterval = setInterval(updatePlayerOnAppwrite, 120);
 
     // Okamžitý první sync
@@ -173,6 +181,9 @@ function resetGame() {
     state.currentRoomId = null;
     state.currentRoom = null;
     state.isHost = false;
+    state.gameMode = 'solo';
+    state.teamId = 1;
+    
     if (state.sublobbyUnsub) { state.sublobbyUnsub(); state.sublobbyUnsub = null; }
     if (state.messagesUnsub) { state.messagesUnsub(); state.messagesUnsub = null; }
 
