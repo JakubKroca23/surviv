@@ -1,6 +1,8 @@
 import { MAP_SIZE, WEAPONS } from './constants.js';
 import { state } from './state.js';
 import { updateUI } from './ui.js';
+import { playSound } from './audio.js';
+
 
 // =============================================
 // GENEROVÁNÍ MAPY (deterministické)
@@ -110,7 +112,10 @@ export class Player {
         if (this.currentWeapon !== 'fists') {
             if (this.ammo[this.currentWeapon] <= 0) { this.reload(); return; }
             this.ammo[this.currentWeapon]--;
+            playSound('shoot_' + this.currentWeapon);
             updateUI();
+        } else {
+            playSound('punch');
         }
         this.lastShotTime = now;
 
@@ -142,7 +147,8 @@ export class Player {
         setTimeout(() => {
             if (this.currentWeapon !== 'fists') {
                 this.ammo[this.currentWeapon] = weapon.ammoMax;
-                Player.onUIUpdate?.();
+                playSound('reload');
+                updateUI();
             }
         }, rTime);
     }
@@ -155,7 +161,8 @@ export class Player {
                 this.hp = Math.min(this.maxHp, this.hp + 50);
                 this.medkits--;
                 this.isHealRunning = false;
-                Player.onUIUpdate?.();
+                playSound('heal');
+                updateUI();
             }
         }, 3000);
     }

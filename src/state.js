@@ -8,6 +8,13 @@ export const state = {
     playerId:        'p_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString().slice(-4),
     playerDocCreated: false,
     realtimeUnsub:   null,
+    
+    // Sublobby & Místnosti
+    currentRoomId:   null,
+    currentRoom:     null,
+    isHost:          false,
+    sublobbyUnsub:   null,
+    messagesUnsub:   null,
 
     // Hráči
     localPlayer:   null,

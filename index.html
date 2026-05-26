@@ -114,16 +114,141 @@
         }
         #btn-respawn:active { transform: scale(0.98); }
         .death-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; background: #0c0a09; padding: 1rem; border-radius: 0.75rem; border: 1px solid #292524; }
+
+        /* --- SUBLOBBY A NOVE STYLY --- */
+        #sublobby-screen {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #1c1917, #022c22, #0c0a09);
+            z-index: 50; padding: 1rem;
+        }
+        .sublobby-card {
+            background: rgba(28,25,23,0.92); border: 1px solid rgba(16,185,129,0.3);
+            padding: 1.5rem; border-radius: 1rem; box-shadow: 0 25px 50px rgba(0,0,0,0.6);
+            max-width: 52rem; width: 100%; box-sizing: border-box; backdrop-filter: blur(8px);
+            display: flex; flex-direction: column; gap: 1.25rem;
+        }
+        .sublobby-header {
+            text-align: center; border-bottom: 1px solid #292524; padding-bottom: 0.75rem;
+        }
+        .sublobby-host {
+            font-size: 0.8rem; color: #34d399; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+        }
+        .sublobby-grid {
+            display: grid; grid-template-columns: 1fr 1.2fr; gap: 1.25rem; height: 18rem;
+        }
+        @media (max-width: 640px) {
+            .sublobby-grid { grid-template-columns: 1fr; height: 26rem; }
+        }
+        .sublobby-panel {
+            background: #141210; border: 1px solid #292524; border-radius: 0.75rem;
+            display: flex; flex-direction: column; overflow: hidden;
+        }
+        .panel-title {
+            background: #1c1917; border-bottom: 1px solid #292524; padding: 0.5rem 0.75rem;
+            font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em; color: #a8a29e;
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .panel-content {
+            flex: 1; padding: 0.75rem; overflow-y: auto; display: flex; flex-direction: column; gap: 0.5rem;
+        }
+        .chat-panel { position: relative; }
+        .chat-messages { font-size: 0.825rem; color: #d6d3d1; text-align: left; }
+        .chat-message-row { margin-bottom: 0.25rem; word-break: break-word; }
+        .chat-sender { font-weight: 800; color: #34d399; margin-right: 0.375rem; }
+        .chat-system { color: #f59e0b; font-style: italic; font-weight: 600; }
+        .chat-input-wrap {
+            display: flex; border-top: 1px solid #292524; background: #0c0a09;
+        }
+        .chat-input-wrap input {
+            flex: 1; background: transparent; border: none; outline: none; color: #fff;
+            padding: 0.625rem 0.75rem; font-size: 0.875rem;
+        }
+        .chat-input-wrap button {
+            background: transparent; border: none; color: #10b981; padding: 0.625rem 1rem;
+            cursor: pointer; transition: color 0.15s;
+        }
+        .chat-input-wrap button:hover { color: #34d399; }
+        .sublobby-settings {
+            background: #141210; border: 1px solid #292524; border-radius: 0.75rem; padding: 0.75rem;
+            text-align: left;
+        }
+        .settings-row {
+            display: flex; justify-content: space-between; align-items: center; margin-top: 0.5rem;
+        }
+        .settings-label { display: flex; flex-direction: column; gap: 0.125rem; }
+        .settings-label span:first-child { font-size: 0.875rem; font-weight: 700; color: #fff; }
+        .settings-help { font-size: 0.675rem; color: #78716c; }
+        .settings-control input[type="range"] {
+            width: 10rem; accent-color: #10b981; cursor: pointer;
+        }
+        .sublobby-footer {
+            display: flex; justify-content: space-between; gap: 1rem; margin-top: 0.25rem;
+        }
+        .sublobby-footer button {
+            flex: 1; padding: 0.875rem; font-weight: 900; font-size: 0.95rem; border-radius: 0.75rem;
+            text-transform: uppercase; letter-spacing: 0.08em; border: none; cursor: pointer; transition: all 0.15s;
+        }
+        .btn-primary {
+            background: linear-gradient(to right, #10b981, #14b8a6); color: #0c0a09;
+        }
+        .btn-primary:hover { filter: brightness(1.1); }
+        .btn-secondary {
+            background: #292524; color: #d6d3d1;
+        }
+        .btn-secondary:hover { background: #3e3835; }
+        
+        /* Lobby specific modifications */
+        .lobby-action-btn {
+            width: 100%; font-weight: 900; font-size: 1.1rem; padding: 1rem;
+            border-radius: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em;
+            border: none; cursor: not-allowed; margin-top: 0.5rem;
+            background: #292524; color: #78716c; transition: all 0.2s;
+            box-sizing: border-box;
+        }
+        .lobby-action-btn.ready {
+            background: linear-gradient(to right, #10b981, #14b8a6);
+            color: #0c0a09; cursor: pointer;
+        }
+        .lobby-action-btn.ready:hover { filter: brightness(1.1); }
+        
+        .room-row {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #141210; border: 1px solid #292524; border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem; margin-bottom: 0.5rem; transition: border-color 0.25s;
+        }
+        .room-row:hover { border-color: rgba(16, 185, 129, 0.4); }
+        .room-info { display: flex; flex-direction: column; gap: 0.125rem; text-align: left; }
+        .room-name { font-weight: 700; color: #fff; }
+        .room-status { font-size: 0.675rem; color: #78716c; font-weight: 600; text-transform: uppercase; }
+        .btn-join {
+            background: #10b981; color: #0c0a09; border: none; font-weight: 800;
+            padding: 0.375rem 0.875rem; border-radius: 0.375rem; cursor: pointer; font-size: 0.75rem;
+            transition: all 0.15s;
+        }
+        .btn-join:hover { background: #34d399; }
+        
+        .sublobby-player-row {
+            display: flex; justify-content: space-between; align-items: center;
+            background: #1c1917; border: 1px solid #292524; border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+        }
+        .player-info-wrap {
+            display: flex; align-items: center; gap: 0.5rem;
+        }
+        .player-dot {
+            width: 12px; height: 12px; border-radius: 50%;
+        }
     </style>
 </head>
 <body>
-
+ 
     <!-- LOBBY -->
     <div id="lobby-screen">
         <div class="lobby-card">
             <h1 class="lobby-title">SURVIV.IO</h1>
             <p class="lobby-sub">Mobile Web Edition</p>
-
+ 
             <div style="margin-bottom:1.5rem">
                 <label class="input-label" for="nickname-input">Přezdívka</label>
                 <input type="text" id="nickname-input" maxlength="12" placeholder="Zadej jméno...">
@@ -133,14 +258,74 @@
                     <button class="skin-btn"        id="skin-3" style="background:#f97316" onclick="window.setSkin('#f97316')"></button>
                 </div>
             </div>
-
-            <button id="btn-play" disabled>Připojování k serveru...</button>
-
+ 
+            <div id="room-selection-area" style="margin-top: 1rem; border-top: 1px solid #292524; padding-top: 1.25rem;">
+                <button id="btn-play" class="lobby-action-btn" disabled>Připojování k serveru...</button>
+                
+                <div class="online-section" style="margin-top: 1.25rem;">
+                    <div class="online-title">Aktivní místnosti:</div>
+                    <div id="rooms-list" style="max-height: 10rem; overflow-y: auto; text-align: left; font-size: 0.875rem; color: #d6d3d1; margin-top: 0.5rem;">
+                        <div style="color:#78716c; text-align: center; padding: 1rem;">Načítání místností...</div>
+                    </div>
+                </div>
+            </div>
+ 
             <div class="online-section">
                 <div class="online-title">Hráči online:</div>
                 <div id="online-players-list">
                     <div style="color:#78716c">Načítání bojiště...</div>
                 </div>
+            </div>
+        </div>
+    </div>
+ 
+    <!-- SUBLOBBY -->
+    <div id="sublobby-screen" style="display:none">
+        <div class="sublobby-card">
+            <div class="sublobby-header">
+                <h2 id="sublobby-title" class="lobby-title" style="margin-bottom: 0.25rem; font-size: 2rem;">NÁZEV MÍSTNOSTI</h2>
+                <div id="sublobby-host-indicator" class="sublobby-host">Zakladatel: Jméno</div>
+            </div>
+            
+            <div class="sublobby-grid">
+                <!-- Hráči -->
+                <div class="sublobby-panel">
+                    <div class="panel-title"><i class="fa-solid fa-users"></i> Hráči v místnosti (<span id="sublobby-player-count">0</span>)</div>
+                    <div id="sublobby-players-list" class="panel-content">
+                        <!-- player rows -->
+                    </div>
+                </div>
+                
+                <!-- Chat -->
+                <div class="sublobby-panel chat-panel">
+                    <div class="panel-title"><i class="fa-solid fa-comments"></i> Herní chat</div>
+                    <div id="sublobby-chat-messages" class="panel-content chat-messages">
+                        <!-- chat messages -->
+                    </div>
+                    <form id="sublobby-chat-form" class="chat-input-wrap" onsubmit="event.preventDefault();">
+                        <input type="text" id="chat-input" placeholder="Napiš zprávu..." autocomplete="off">
+                        <button id="btn-chat-send" type="submit"><i class="fa-solid fa-paper-plane"></i></button>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Nastavení hry -->
+            <div class="sublobby-settings">
+                <div class="panel-title" style="background:transparent;border:none;padding:0"><i class="fa-solid fa-gear"></i> Nastavení hry</div>
+                <div class="settings-row">
+                    <div class="settings-label">
+                        <span>AI Boti: <strong id="ai-count-val">0</strong></span>
+                        <span class="settings-help">Přidá do hry zadaný počet počítačem řízených AI botů</span>
+                    </div>
+                    <div class="settings-control">
+                        <input type="range" id="ai-count-slider" min="0" max="15" value="0">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="sublobby-footer">
+                <button id="btn-leave-room" class="btn-secondary">Opustit místnost</button>
+                <button id="btn-start-game" class="btn-primary" style="display:none">Spustit hru</button>
             </div>
         </div>
     </div>

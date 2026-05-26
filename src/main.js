@@ -1,10 +1,24 @@
 import { state } from './state.js';
 import { Player, generateObstacles, generateSpawnedLoot } from './player.js';
-import { initAppwriteAndJoin, updatePlayerOnAppwrite, removePlayerFromAppwrite, fetchAllPlayers } from './network.js';
+import { 
+    initAppwriteAndJoin, 
+    updatePlayerOnAppwrite, 
+    removePlayerFromAppwrite, 
+    fetchAllPlayers,
+    createRoom,
+    joinRoom,
+    leaveRoom,
+    startGameOnAppwrite,
+    updateRoomSettingsOnAppwrite,
+    sendChatMessage,
+    fetchActiveRooms
+} from './network.js';
 import { drawGame } from './renderer.js';
-import { updateGame } from './game.js';
-import { updateUI, updateOnlineList, setSkin } from './ui.js';
+import { updateGame, spawnAIBots } from './game.js';
+import { updateUI, updateOnlineList, setSkin, showScreen } from './ui.js';
 import { setupMobileControls, setupDesktopControls } from './controls.js';
+import { initAudio } from './audio.js';
+
 
 // =============================================
 // INICIALIZACE
@@ -17,17 +31,27 @@ window.onload = async () => {
     state.minimapCanvas = document.getElementById('minimap-canvas');
     state.mctx          = state.minimapCanvas.getContext('2d');
 
-    // Globální funkce pro HTML onclick atributy
+    // Globální funkce pro HTML onclick atributy a index.html interakce
     window.setSkin = (color) => setSkin(color);
+    
+    // Globální připojení k místnosti z lobby listu
+    window.joinRoom = async (roomId) => {
+        const name = input.value.trim();
+        if (!name || name.length < 2) {
+            alert('Zadej nejdříve přezdívku (aspoň 2 znaky)!');
+            return;
+        }
+        await joinRoom(roomId);
+    };
 
-    // Nickname input → enable play button
+    // Nickname input → enable play / create room button
     const input  = document.getElementById('nickname-input');
     const btnPlay = document.getElementById('btn-play');
     input.addEventListener('input', () => {
         const ready = input.value.trim().length >= 2;
         btnPlay.disabled = !ready;
         btnPlay.classList.toggle('ready', ready);
-        if (ready) btnPlay.textContent = 'Vstoupit do boje!';
+        if (ready) btnPlay.textContent = 'Vytvořit hru';
     });
 
     // Joysticky (mobil)
@@ -43,12 +67,47 @@ window.onload = async () => {
     // Respawn tlačítko
     document.getElementById('btn-respawn').addEventListener('click', () => {
         document.getElementById('death-screen').style.display = 'none';
-        document.getElementById('lobby-screen').style.display = 'flex';
+        showScreen('lobby-screen');
         resetGame();
     });
 
-    // Play tlačítko
-    btnPlay.addEventListener('click', startGame);
+    // Play/Create Room tlačítko
+    btnPlay.addEventListener('click', () => {
+        const name = input.value.trim();
+        if (!name || name.length < 2) return;
+        createRoom(`Místnost hráče ${name}`);
+    });
+
+    // Opustit sublobby místnost
+    document.getElementById('btn-leave-room').addEventListener('click', () => {
+        leaveRoom(true);
+    });
+
+    // Odstartovat hru (pouze host)
+    document.getElementById('btn-start-game').addEventListener('click', () => {
+        startGameOnAppwrite();
+    });
+
+    // AI Slider
+    const aiSlider = document.getElementById('ai-count-slider');
+    const aiVal = document.getElementById('ai-count-val');
+    aiSlider.addEventListener('input', () => {
+        aiVal.textContent = aiSlider.value;
+        updateRoomSettingsOnAppwrite(aiSlider.value);
+    });
+
+    // Sublobby Chat Form
+    const chatForm = document.getElementById('sublobby-chat-form');
+    const chatInput = document.getElementById('chat-input');
+    chatForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const text = chatInput.value.trim();
+        if (!text) return;
+        chatInput.value = '';
+        
+        const nick = input.value.trim() || 'Hráč';
+        await sendChatMessage(nick, text);
+    });
 
     // Heal tlačítko
     document.getElementById('btn-heal').addEventListener('click', () => {
@@ -73,32 +132,48 @@ window.onload = async () => {
     // Připoj k Appwrite
     await initAppwriteAndJoin();
 
-    // Obnovuj lobby každých 5s
+    // Obnovuj lobby a místnosti každých 4s
     setInterval(async () => {
-        if (!state.gameActive) await fetchAllPlayers();
-    }, 5000);
+        if (!state.gameActive) {
+            await fetchAllPlayers();
+            if (!state.currentRoomId) {
+                await fetchActiveRooms();
+            }
+        }
+    }, 4000);
 
     // Spusť render loop
     gameLoop();
 };
 
 // =============================================
-// START HRY
+// REÁLNÝ START HRY
 // =============================================
 
-function startGame() {
-    const name = document.getElementById('nickname-input').value.trim();
-    if (!name || name.length < 2) return;
+window.startLocalGame = () => {
+    const name = document.getElementById('nickname-input').value.trim() || 'Bojovník';
 
-    // Inicializuj hráče
+    // Inicializuj audio na uživatelskou interakci
+    initAudio();
+
+    // Inicializuj lokálního hráče
     state.localPlayer = new Player(state.playerId, name, state.selectedSkin);
+    state.localPlayer.roomId = state.currentRoomId;
+    
+    // Vygeneruj mapu & loot
+    state.mapObstacles  = generateObstacles();
+    state.itemsOnGround = generateSpawnedLoot();
+
+    // Vygenerovat AI boty na hostu
+    if (state.isHost && state.currentRoom && state.currentRoom.aiCount > 0) {
+        spawnAIBots(state.currentRoom.aiCount);
+    }
+
     state.gameActive  = true;
     state.playStartTime = Date.now();
 
-    // Přepni UI
-    document.getElementById('lobby-screen').style.display = 'none';
-    document.getElementById('game-ui').style.display      = '';
-    document.getElementById('death-screen').style.display = 'none';
+    // Přepni UI na hru
+    showScreen('game-ui');
 
     updateUI();
     updateOnlineList();
@@ -108,7 +183,7 @@ function startGame() {
 
     // Okamžitý první sync
     updatePlayerOnAppwrite();
-}
+};
 
 // =============================================
 // RESET HRY
@@ -120,7 +195,16 @@ function resetGame() {
     state.playerDocCreated = false;
     state.localBullets    = [];
     state.hitMarkers      = [];
+    state.aiBots          = [];
     if (state.networkInterval) { clearInterval(state.networkInterval); state.networkInterval = null; }
+    if (state.botInterval) { clearInterval(state.botInterval); state.botInterval = null; }
+
+    // Zrušit aktuální místnost
+    state.currentRoomId = null;
+    state.currentRoom = null;
+    state.isHost = false;
+    if (state.sublobbyUnsub) { state.sublobbyUnsub(); state.sublobbyUnsub = null; }
+    if (state.messagesUnsub) { state.messagesUnsub(); state.messagesUnsub = null; }
 
     // Regeneruj mapu
     state.mapObstacles  = generateObstacles();

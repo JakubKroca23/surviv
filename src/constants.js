@@ -6,6 +6,8 @@ export const APPWRITE_ENDPOINT   = 'https://appwrite.propoj.app/v1';
 export const APPWRITE_PROJECT_ID = 'surviv';
 export const DATABASE_ID         = 'surviv';
 export const COLLECTION_ID       = 'players';
+export const ROOMS_COLLECTION_ID = 'rooms';
+export const MESSAGES_COLLECTION_ID = 'messages';
 
 export const MAP_SIZE = 2500;
 
