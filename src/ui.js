@@ -77,34 +77,8 @@ export function updateOnlineList() {
 }
 
 // =============================================
-// UI – MÍSTNOSTI & SUBLOBBY
+// UI – SUBLOBBY / MATCHMAKING
 // =============================================
-
-export function updateRoomsList(rooms) {
-    const el = document.getElementById('rooms-list');
-    if (!el) return;
-
-    if (!rooms || rooms.length === 0) {
-        el.innerHTML = '<div style="color:#78716c; text-align: center; padding: 1rem;">Žádné aktivní místnosti.<br>Zadej jméno a klikni na tlačítko nahoře pro založení!</div>';
-        return;
-    }
-
-    let html = '';
-    rooms.forEach(room => {
-        const statusText = room.status === 'playing' ? 'Probíhá hra' : 'V lobby';
-        const color = room.status === 'playing' ? '#ef4444' : '#10b981';
-        html += `
-        <div class="room-row">
-            <div class="room-info">
-                <span class="room-name">${room.name}</span>
-                <span class="room-status" style="color: ${color}">${statusText}</span>
-            </div>
-            <button class="btn-join" onclick="window.joinRoom('${room.$id}')" ${room.status === 'playing' ? 'disabled style="background:#292524;color:#78716c;cursor:not-allowed;"' : ''}>Připojit se</button>
-        </div>`;
-    });
-
-    el.innerHTML = html;
-}
 
 export function updateSublobbyPlayers(players) {
     const listEl = document.getElementById('sublobby-players-list');

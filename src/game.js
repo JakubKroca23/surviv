@@ -145,6 +145,22 @@ export function updateGame() {
         updateUI();
         if (p.hp <= 0) handleDeath('Zóna');
     }
+
+    // 7. Kontrola konce hry (pokud zbýváš pouze ty, vyhráváš!)
+    if (state.gameActive && p.hp > 0) {
+        let otherAlive = 0;
+        for (const id in state.activePlayers) {
+            if (state.activePlayers[id].hp > 0) {
+                otherAlive++;
+            }
+        }
+        
+        // Povolit výhru až po uplynutí krátké ochranné doby (např. 6 vteřin od začátku kola)
+        const elapsed = (Date.now() - state.playStartTime) / 1000;
+        if (elapsed > 6 && otherAlive === 0) {
+            handleWin();
+        }
+    }
 }
 
 // =============================================
@@ -163,12 +179,63 @@ export function spawnHitMarker(x, y) {
     state.hitMarkers.push({ x, y, alpha: 1 });
 }
 
+export async function handleWin() {
+    if (!state.gameActive) return;
+    state.gameActive = false;
+    playSound('heal'); // Přehrát pozitivní vítězný zvuk!
+    if (state.networkInterval) { clearInterval(state.networkInterval); state.networkInterval = null; }
+    if (state.botInterval) { clearInterval(state.botInterval); state.botInterval = null; }
+
+    const card = document.querySelector('.death-card');
+    if (card) card.style.borderColor = 'rgba(16, 185, 129, 0.6)'; // Mint glow
+
+    const title = document.querySelector('.death-card h2');
+    if (title) {
+        title.textContent = 'VÍTĚZSTVÍ!';
+        title.style.color = '#34d399';
+    }
+
+    const icon = document.querySelector('.death-icon');
+    if (icon) {
+        icon.innerHTML = '<i class="fa-solid fa-trophy" style="font-size:2.5rem;color:#34d399"></i>';
+        icon.style.background = 'rgba(6, 95, 70, 0.3)';
+        icon.style.borderColor = 'rgba(52, 211, 153, 0.5)';
+    }
+
+    document.getElementById('death-killer-text').textContent = 'Gratulujeme, zlikvidoval jsi všechny soupeře a ovládl bojiště!';
+    document.getElementById('death-stat-kills').textContent  = state.localPlayer.kills;
+    
+    const elapsed = Math.floor((Date.now() - state.playStartTime) / 1000);
+    document.getElementById('death-stat-time').textContent   = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+    
+    document.getElementById('death-screen').style.display    = 'flex';
+    document.getElementById('game-ui').style.display         = 'none';
+
+    await removePlayerFromAppwrite();
+}
+
 export async function handleDeath(killerId) {
     if (!state.gameActive) return;
     state.gameActive = false;
     playSound('death');
     if (state.networkInterval) { clearInterval(state.networkInterval); state.networkInterval = null; }
     if (state.botInterval) { clearInterval(state.botInterval); state.botInterval = null; }
+
+    const card = document.querySelector('.death-card');
+    if (card) card.style.borderColor = 'rgba(220, 38, 38, 0.3)'; // Red glow
+
+    const title = document.querySelector('.death-card h2');
+    if (title) {
+        title.textContent = 'Konec hry!';
+        title.style.color = '#ef4444';
+    }
+
+    const icon = document.querySelector('.death-icon');
+    if (icon) {
+        icon.innerHTML = '<i class="fa-solid fa-skull-crossbones" style="font-size:2.5rem;color:#ef4444"></i>';
+        icon.style.background = 'rgba(127,29,29,0.3)';
+        icon.style.borderColor = 'rgba(239,68,68,0.5)';
+    }
 
     let killerName = 'Divoká zóna';
     if (killerId && killerId !== 'Zóna') {

@@ -5,13 +5,9 @@ import {
     updatePlayerOnAppwrite, 
     removePlayerFromAppwrite, 
     fetchAllPlayers,
-    createRoom,
-    joinRoom,
+    joinOrCreateActiveLobby,
     leaveRoom,
-    startGameOnAppwrite,
-    updateRoomSettingsOnAppwrite,
-    sendChatMessage,
-    fetchActiveRooms
+    sendChatMessage
 } from './network.js';
 import { drawGame } from './renderer.js';
 import { updateGame, spawnAIBots } from './game.js';
@@ -31,27 +27,17 @@ window.onload = async () => {
     state.minimapCanvas = document.getElementById('minimap-canvas');
     state.mctx          = state.minimapCanvas.getContext('2d');
 
-    // Globální funkce pro HTML onclick atributy a index.html interakce
+    // Globální funkce pro HTML skiny
     window.setSkin = (color) => setSkin(color);
-    
-    // Globální připojení k místnosti z lobby listu
-    window.joinRoom = async (roomId) => {
-        const name = input.value.trim();
-        if (!name || name.length < 2) {
-            alert('Zadej nejdříve přezdívku (aspoň 2 znaky)!');
-            return;
-        }
-        await joinRoom(roomId);
-    };
 
-    // Nickname input → enable play / create room button
+    // Nickname input → povolit vyhledávání zápasu
     const input  = document.getElementById('nickname-input');
     const btnPlay = document.getElementById('btn-play');
     input.addEventListener('input', () => {
         const ready = input.value.trim().length >= 2;
         btnPlay.disabled = !ready;
         btnPlay.classList.toggle('ready', ready);
-        if (ready) btnPlay.textContent = 'Vytvořit hru';
+        if (ready) btnPlay.textContent = 'VYHLEDAT ZÁPAS';
     });
 
     // Joysticky (mobil)
@@ -71,29 +57,16 @@ window.onload = async () => {
         resetGame();
     });
 
-    // Play/Create Room tlačítko
+    // Spustit matchmaking (vyhledat / vytvořit lobby)
     btnPlay.addEventListener('click', () => {
         const name = input.value.trim();
         if (!name || name.length < 2) return;
-        createRoom(`Místnost hráče ${name}`);
+        joinOrCreateActiveLobby();
     });
 
-    // Opustit sublobby místnost
+    // Zrušit hledání zápasu (opustit lobby)
     document.getElementById('btn-leave-room').addEventListener('click', () => {
         leaveRoom(true);
-    });
-
-    // Odstartovat hru (pouze host)
-    document.getElementById('btn-start-game').addEventListener('click', () => {
-        startGameOnAppwrite();
-    });
-
-    // AI Slider
-    const aiSlider = document.getElementById('ai-count-slider');
-    const aiVal = document.getElementById('ai-count-val');
-    aiSlider.addEventListener('input', () => {
-        aiVal.textContent = aiSlider.value;
-        updateRoomSettingsOnAppwrite(aiSlider.value);
     });
 
     // Sublobby Chat Form
@@ -132,13 +105,10 @@ window.onload = async () => {
     // Připoj k Appwrite
     await initAppwriteAndJoin();
 
-    // Obnovuj lobby a místnosti každých 4s
+    // Obnovuj online hráče každých 4s
     setInterval(async () => {
         if (!state.gameActive) {
             await fetchAllPlayers();
-            if (!state.currentRoomId) {
-                await fetchActiveRooms();
-            }
         }
     }, 4000);
 
@@ -164,7 +134,7 @@ window.startLocalGame = () => {
     state.mapObstacles  = generateObstacles();
     state.itemsOnGround = generateSpawnedLoot();
 
-    // Vygenerovat AI boty na hostu
+    // Vygenerovat AI boty na hostu (doplnit do 20)
     if (state.isHost && state.currentRoom && state.currentRoom.aiCount > 0) {
         spawnAIBots(state.currentRoom.aiCount);
     }

@@ -261,13 +261,6 @@
  
             <div id="room-selection-area" style="margin-top: 1rem; border-top: 1px solid #292524; padding-top: 1.25rem;">
                 <button id="btn-play" class="lobby-action-btn" disabled>Připojování k serveru...</button>
-                
-                <div class="online-section" style="margin-top: 1.25rem;">
-                    <div class="online-title">Aktivní místnosti:</div>
-                    <div id="rooms-list" style="max-height: 10rem; overflow-y: auto; text-align: left; font-size: 0.875rem; color: #d6d3d1; margin-top: 0.5rem;">
-                        <div style="color:#78716c; text-align: center; padding: 1rem;">Načítání místností...</div>
-                    </div>
-                </div>
             </div>
  
             <div class="online-section">
@@ -279,18 +272,18 @@
         </div>
     </div>
  
-    <!-- SUBLOBBY -->
+    <!-- SUBLOBBY / MATCHMAKING LOBBY -->
     <div id="sublobby-screen" style="display:none">
         <div class="sublobby-card">
             <div class="sublobby-header">
-                <h2 id="sublobby-title" class="lobby-title" style="margin-bottom: 0.25rem; font-size: 2rem;">NÁZEV MÍSTNOSTI</h2>
-                <div id="sublobby-host-indicator" class="sublobby-host">Zakladatel: Jméno</div>
+                <h2 id="sublobby-title" class="lobby-title" style="margin-bottom: 0.25rem; font-size: 2rem;">VYHLEDÁVÁNÍ ZÁPASU</h2>
+                <div id="sublobby-host-indicator" class="sublobby-host" style="font-size: 1.1rem; color: #fbbf24;">Zápas začíná za: -- s</div>
             </div>
             
             <div class="sublobby-grid">
                 <!-- Hráči -->
                 <div class="sublobby-panel">
-                    <div class="panel-title"><i class="fa-solid fa-users"></i> Hráči v místnosti (<span id="sublobby-player-count">0</span>)</div>
+                    <div class="panel-title"><i class="fa-solid fa-users"></i> Připojení bojovníci (<span id="sublobby-player-count">0</span> / 20)</div>
                     <div id="sublobby-players-list" class="panel-content">
                         <!-- player rows -->
                     </div>
@@ -298,34 +291,30 @@
                 
                 <!-- Chat -->
                 <div class="sublobby-panel chat-panel">
-                    <div class="panel-title"><i class="fa-solid fa-comments"></i> Herní chat</div>
+                    <div class="panel-title"><i class="fa-solid fa-comments"></i> Pokec v lobby</div>
                     <div id="sublobby-chat-messages" class="panel-content chat-messages">
                         <!-- chat messages -->
                     </div>
                     <form id="sublobby-chat-form" class="chat-input-wrap" onsubmit="event.preventDefault();">
-                        <input type="text" id="chat-input" placeholder="Napiš zprávu..." autocomplete="off">
+                        <input type="text" id="chat-input" placeholder="Napiš zprávu v lobby..." autocomplete="off">
                         <button id="btn-chat-send" type="submit"><i class="fa-solid fa-paper-plane"></i></button>
                     </form>
                 </div>
             </div>
             
-            <!-- Nastavení hry -->
+            <!-- Nastavení hry (Zobrazeno info) -->
             <div class="sublobby-settings">
-                <div class="panel-title" style="background:transparent;border:none;padding:0"><i class="fa-solid fa-gear"></i> Nastavení hry</div>
-                <div class="settings-row">
+                <div class="panel-title" style="background:transparent;border:none;padding:0"><i class="fa-solid fa-circle-info"></i> Informace o zápasu</div>
+                <div class="settings-row" style="margin-top: 0.25rem;">
                     <div class="settings-label">
-                        <span>AI Boti: <strong id="ai-count-val">0</strong></span>
-                        <span class="settings-help">Přidá do hry zadaný počet počítačem řízených AI botů</span>
-                    </div>
-                    <div class="settings-control">
-                        <input type="range" id="ai-count-slider" min="0" max="15" value="0">
+                        <span style="font-size: 0.8rem; color: #a8a29e; font-weight: 500;">Chybějící hráči budou při startu automaticky doplněni AI boty do plného počtu 20 bojovníků.</span>
                     </div>
                 </div>
             </div>
             
             <div class="sublobby-footer">
-                <button id="btn-leave-room" class="btn-secondary">Opustit místnost</button>
-                <button id="btn-start-game" class="btn-primary" style="display:none">Spustit hru</button>
+                <button id="btn-leave-room" class="btn-secondary" style="width:100%">Zrušit hledání</button>
+                <button id="btn-start-game" style="display:none"></button> <!-- Skrytá podpora -->
             </div>
         </div>
     </div>

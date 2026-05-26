@@ -11,7 +11,6 @@ import { state } from './state.js';
 import { 
     updateUI, 
     updateOnlineList, 
-    updateRoomsList, 
     updateSublobbyPlayers, 
     updateSublobbyChat, 
     showScreen 
@@ -28,7 +27,7 @@ export const client = new Client()
 export const account   = new Account(client);
 export const databases = new Databases(client);
 
-let roomKeepAliveInterval = null;
+let lobbyCountdownInterval = null;
 
 // =============================================
 // INICIALIZACE
@@ -42,13 +41,11 @@ export async function initAppwriteAndJoin() {
 
         const btn = document.getElementById('btn-play');
         btn.disabled = false;
-        btn.textContent = 'Vstoupit do boje';
+        btn.textContent = 'VYHLEDAT ZÁPAS';
         btn.classList.add('ready');
 
         await fetchAllPlayers();
         subscribeToPlayers();
-        
-        await fetchActiveRooms();
     } catch (err) {
         console.error('❌ Appwrite init chyba:', err);
         const btn = document.getElementById('btn-play');
@@ -79,7 +76,6 @@ export async function fetchAllPlayers() {
         res.documents.forEach(data => {
             state.rawPlayers[data.$id] = data;
             if (data.$id !== state.playerId) {
-                // Pouze pokud sdílíme stejný roomId
                 if (state.currentRoomId && data.roomId === state.currentRoomId) {
                     state.activePlayers[data.$id] = { ...data };
                 }
@@ -105,14 +101,12 @@ function handleRealtimeEvent(response) {
         return;
     }
 
-    // Věk zprávy
     const age = Date.now() - (data.lastUpdate || 0);
     if (age > 12000) return;
 
     state.rawPlayers[pid] = data;
 
     if (pid !== state.playerId) {
-        // Synchronizace střel (pouze pokud jsme ve stejné místnosti)
         if (state.currentRoomId && data.roomId === state.currentRoomId) {
             if (data.activeBullets) {
                 try {
@@ -126,7 +120,6 @@ function handleRealtimeEvent(response) {
             }
         }
 
-        // Kill credit
         if (state.localPlayer && data.killedBy === state.playerId && !state.localPlayer.countedKills[pid]) {
             state.localPlayer.countedKills[pid] = true;
             state.localPlayer.kills++;
@@ -134,7 +127,6 @@ function handleRealtimeEvent(response) {
             updatePlayerOnAppwrite();
         }
 
-        // Interpolace pozice
         if (state.currentRoomId && data.roomId === state.currentRoomId) {
             if (!state.activePlayers[pid]) {
                 state.activePlayers[pid] = { ...data };
@@ -151,7 +143,6 @@ function handleRealtimeEvent(response) {
                 });
             }
         } else {
-            // Hráč odešel z naší místnosti
             delete state.activePlayers[pid];
         }
     }
@@ -161,32 +152,52 @@ function handleRealtimeEvent(response) {
 }
 
 // =============================================
-// SPRÁVA MÍSTNOSTÍ (ROOMS)
+// JUMP-IN LOBBY (MATCHMAKING)
 // =============================================
 
-export async function fetchActiveRooms() {
+export async function joinOrCreateActiveLobby() {
+    if (!state.currentUser) return;
+
+    const btn = document.getElementById('btn-play');
+    btn.disabled = true;
+    btn.textContent = 'Vyhledávání lobby...';
+
     try {
+        // Vyhledat všechny místnosti, které jsou ve stavu 'waiting' a nejsou starší než 30 vteřin
         const res = await databases.listDocuments(DATABASE_ID, ROOMS_COLLECTION_ID, [
-            Query.greaterThan('lastUpdate', Date.now() - 30000), // aktivní za 30s
-            Query.limit(50),
+            Query.equal('status', 'waiting'),
+            Query.greaterThan('lastUpdate', Date.now() - 30000),
+            Query.limit(10),
         ]);
-        const waitingRooms = res.documents.filter(r => r.status === 'waiting');
-        updateRoomsList(waitingRooms);
+
+        if (res.documents.length > 0) {
+            // Najít nejstarší platnou místnost (která ještě neskončila)
+            const room = res.documents[0];
+            console.log('✅ Nalezeno aktivní lobby. Připojuji se k:', room.$id);
+            await joinRoom(room.$id);
+        } else {
+            // Vytvořit novou místnost (lobby)
+            console.log('➕ Žádné aktivní lobby nenalezeno. Vytvářím nové...');
+            const nick = document.getElementById('nickname-input').value.trim() || 'Hráč';
+            await createRoom(`Lobby od ${nick}`);
+        }
     } catch (err) {
-        console.error('fetchActiveRooms chyba:', err);
+        console.error('Matchmaking chyba:', err);
+        alert('Nepodařilo se připojit k matchmakingu.');
+        btn.disabled = false;
+        btn.textContent = 'VYHLEDAT ZÁPAS';
     }
 }
 
 export async function createRoom(roomName) {
-    if (!state.currentUser) return;
-    
     const roomId = 'r_' + Math.random().toString(36).substring(2, 10);
+    const creationTime = Date.now();
     const payload = {
         name: roomName,
         hostId: state.playerId,
         status: 'waiting',
         aiCount: 0,
-        lastUpdate: Date.now()
+        lastUpdate: creationTime // slouží jako čas vzniku
     };
     
     try {
@@ -200,58 +211,30 @@ export async function createRoom(roomName) {
         state.currentRoom = room;
         state.isHost = true;
         
-        // Změna obrazovky a titulků
-        document.getElementById('sublobby-title').textContent = room.name.toUpperCase();
-        document.getElementById('sublobby-host-indicator').textContent = `Zakladatel: ty`;
-        document.getElementById('btn-start-game').style.display = '';
-        document.getElementById('ai-count-slider').disabled = false;
-        document.getElementById('ai-count-slider').value = 0;
-        document.getElementById('ai-count-val').textContent = '0';
-        
         showScreen('sublobby-screen');
         
-        // Připojit lokálního hráče do místnosti na Appwrite
         if (state.localPlayer) {
             state.localPlayer.roomId = roomId;
         }
         
-        // Spustit realtime odběr změn v místnosti
         subscribeToSublobby(roomId);
-        
-        await sendChatMessage('SYSTEM', `Místnost "${roomName}" byla vytvořena.`);
+        await sendChatMessage('SYSTEM', `Nové lobby bylo otevřeno. Čeká se na další bojovníky!`);
         updateSublobbyInfo();
-        startRoomKeepAlive();
     } catch (err) {
-        console.error('createRoom chyba:', err);
-        alert('Nepodařilo se vytvořit místnost.');
+        throw err;
     }
 }
 
 export async function joinRoom(roomId) {
-    if (!state.currentUser) return;
-    
     try {
         const room = await databases.getDocument(DATABASE_ID, ROOMS_COLLECTION_ID, roomId);
-        if (room.status === 'playing') {
-            alert('Tato hra již začala!');
-            return;
-        }
         
         state.currentRoomId = roomId;
         state.currentRoom = room;
         state.isHost = false;
         
-        // Přechod na obrazovku
-        document.getElementById('sublobby-title').textContent = room.name.toUpperCase();
-        document.getElementById('sublobby-host-indicator').textContent = `Zakladatel: Hráč`;
-        document.getElementById('btn-start-game').style.display = 'none';
-        document.getElementById('ai-count-slider').disabled = true;
-        document.getElementById('ai-count-slider').value = room.aiCount || 0;
-        document.getElementById('ai-count-val').textContent = room.aiCount || 0;
-        
         showScreen('sublobby-screen');
         
-        // Přihlásit se do místnosti na Appwrite
         if (state.localPlayer) {
             state.localPlayer.roomId = roomId;
         }
@@ -259,11 +242,10 @@ export async function joinRoom(roomId) {
         subscribeToSublobby(roomId);
         
         const nick = document.getElementById('nickname-input').value.trim() || 'Bojovník';
-        await sendChatMessage('SYSTEM', `${nick} se připojil do místnosti.`);
+        await sendChatMessage('SYSTEM', `${nick} vstoupil do lobby.`);
         updateSublobbyInfo();
     } catch (err) {
-        console.error('joinRoom chyba:', err);
-        alert('Nepodařilo se připojit k místnosti.');
+        throw err;
     }
 }
 
@@ -273,22 +255,17 @@ export async function leaveRoom(sendSystemMsg = true) {
     if (sendSystemMsg) {
         const nick = document.getElementById('nickname-input').value.trim() || 'Bojovník';
         if (state.isHost) {
-            await sendChatMessage('SYSTEM', `Zakladatel opustil místnost. Místnost byla zrušena.`);
+            await sendChatMessage('SYSTEM', `Zakladatel opustil lobby. Lobby bude zrušeno.`);
         } else {
-            await sendChatMessage('SYSTEM', `${nick} opustil místnost.`);
+            await sendChatMessage('SYSTEM', `${nick} opustil lobby.`);
         }
     }
     
-    // Zrušit interval keep alive
-    if (roomKeepAliveInterval) {
-        clearInterval(roomKeepAliveInterval);
-        roomKeepAliveInterval = null;
-    }
+    stopLobbyCountdown();
     
     const oldRoomId = state.currentRoomId;
     const oldIsHost = state.isHost;
     
-    // Klientský reset state
     state.currentRoomId = null;
     state.currentRoom = null;
     state.isHost = false;
@@ -296,7 +273,6 @@ export async function leaveRoom(sendSystemMsg = true) {
     if (state.sublobbyUnsub) { state.sublobbyUnsub(); state.sublobbyUnsub = null; }
     if (state.messagesUnsub) { state.messagesUnsub(); state.messagesUnsub = null; }
     
-    // Odhlásit z Appwrite
     if (state.localPlayer) state.localPlayer.roomId = '';
     if (state.playerDocCreated) {
         try {
@@ -304,7 +280,6 @@ export async function leaveRoom(sendSystemMsg = true) {
         } catch {}
     }
     
-    // Smazat místnost z DB, pokud jsme zakladatel
     if (oldIsHost) {
         try {
             await databases.deleteDocument(DATABASE_ID, ROOMS_COLLECTION_ID, oldRoomId);
@@ -313,30 +288,61 @@ export async function leaveRoom(sendSystemMsg = true) {
         }
     }
     
+    const btn = document.getElementById('btn-play');
+    btn.disabled = false;
+    btn.textContent = 'VYHLEDAT ZÁPAS';
+    
     showScreen('lobby-screen');
-    await fetchActiveRooms();
 }
 
-export async function startGameOnAppwrite() {
-    if (!state.isHost || !state.currentRoomId) return;
-    try {
-        await databases.updateDocument(DATABASE_ID, ROOMS_COLLECTION_ID, state.currentRoomId, {
-            status: 'playing',
-            lastUpdate: Date.now()
-        });
-    } catch (err) {
-        console.error('startGameOnAppwrite chyba:', err);
-    }
+// =============================================
+// AUTOMATICKÝ COUNTER & START LOBBY
+// =============================================
+
+function startLobbyCountdown() {
+    stopLobbyCountdown();
+    
+    lobbyCountdownInterval = setInterval(async () => {
+        if (!state.currentRoomId || !state.currentRoom) {
+            stopLobbyCountdown();
+            return;
+        }
+
+        const elapsed = Date.now() - state.currentRoom.lastUpdate;
+        const timeLeft = Math.max(0, 30 - Math.floor(elapsed / 1000));
+        
+        const indicator = document.getElementById('sublobby-host-indicator');
+        if (indicator) {
+            indicator.textContent = timeLeft > 0 ? `Zápas začíná za: ${timeLeft} s` : 'Startuji zápas...';
+        }
+
+        if (timeLeft <= 0 && state.isHost && state.currentRoom.status === 'waiting') {
+            stopLobbyCountdown();
+            
+            // Spočítat reálné lidi v místnosti
+            const playerCount = Object.values(state.rawPlayers).filter(p => p.roomId === state.currentRoomId).length + 1; // + host
+            
+            // Doplnění boty do 20 hráčů
+            const botsNeeded = Math.max(0, 20 - playerCount);
+            console.log(`🎮 Matchmaker startuje hru! Hráči: ${playerCount}, AI Boti: ${botsNeeded}`);
+
+            try {
+                await databases.updateDocument(DATABASE_ID, ROOMS_COLLECTION_ID, state.currentRoomId, {
+                    status: 'playing',
+                    aiCount: botsNeeded,
+                    lastUpdate: Date.now() // aktualizace keep alive
+                });
+            } catch (err) {
+                console.error('Chyba při automatickém startu hry:', err);
+            }
+        }
+    }, 1000);
 }
 
-export async function updateRoomSettingsOnAppwrite(aiCount) {
-    if (!state.isHost || !state.currentRoomId) return;
-    try {
-        await databases.updateDocument(DATABASE_ID, ROOMS_COLLECTION_ID, state.currentRoomId, {
-            aiCount: parseInt(aiCount)
-        });
-    } catch (err) {
-        console.error('updateRoomSettingsOnAppwrite chyba:', err);
+function stopLobbyCountdown() {
+    if (lobbyCountdownInterval) {
+        clearInterval(lobbyCountdownInterval);
+        lobbyCountdownInterval = null;
     }
 }
 
@@ -348,30 +354,20 @@ export function subscribeToSublobby(roomId) {
     if (state.sublobbyUnsub) state.sublobbyUnsub();
     if (state.messagesUnsub) state.messagesUnsub();
     
-    // Odběr změn v místnosti
     state.sublobbyUnsub = client.subscribe(
         `databases.${DATABASE_ID}.collections.${ROOMS_COLLECTION_ID}.documents.${roomId}`,
         async (response) => {
             const { events, payload: data } = response;
             if (events.some(e => e.includes('.delete'))) {
-                alert('Místnost byla zrušena zakladatelem.');
+                alert('Zápas byl zrušen.');
                 leaveRoom(false);
                 return;
             }
             
             state.currentRoom = data;
             
-            // Synchronizace AI slideru pro připojené
-            if (!state.isHost) {
-                const slider = document.getElementById('ai-count-slider');
-                if (slider) {
-                    slider.value = data.aiCount || 0;
-                    document.getElementById('ai-count-val').textContent = data.aiCount || 0;
-                }
-            }
-            
-            // Pokud host odstartoval hru, začínáme!
             if (data.status === 'playing' && !state.gameActive) {
+                stopLobbyCountdown();
                 if (window.startLocalGame) {
                     window.startLocalGame();
                 }
@@ -379,7 +375,6 @@ export function subscribeToSublobby(roomId) {
         }
     );
     
-    // Odběr chatu
     state.messagesUnsub = client.subscribe(
         `databases.${DATABASE_ID}.collections.${MESSAGES_COLLECTION_ID}.documents`,
         (response) => {
@@ -390,8 +385,8 @@ export function subscribeToSublobby(roomId) {
         }
     );
     
-    // První načtení dat
     fetchChatMessages(roomId);
+    startLobbyCountdown();
 }
 
 export async function fetchChatMessages(roomId) {
@@ -433,15 +428,13 @@ export function updateSublobbyInfo() {
     
     const roomPlayers = [];
     
-    // Přidat lokálního hráče
     const localNick = document.getElementById('nickname-input').value.trim();
     roomPlayers.push({
         $id: state.playerId,
-        name: localNick || 'Hráč',
+        name: localNick || 'Bojovník',
         color: state.selectedSkin,
     });
     
-    // Přidat ostatní ze stejné místnosti
     for (const pid in state.rawPlayers) {
         const p = state.rawPlayers[pid];
         if (p.roomId === state.currentRoomId && pid !== state.playerId) {
@@ -450,21 +443,6 @@ export function updateSublobbyInfo() {
     }
     
     updateSublobbyPlayers(roomPlayers);
-}
-
-function startRoomKeepAlive() {
-    if (roomKeepAliveInterval) clearInterval(roomKeepAliveInterval);
-    roomKeepAliveInterval = setInterval(async () => {
-        if (state.isHost && state.currentRoomId) {
-            try {
-                await databases.updateDocument(DATABASE_ID, ROOMS_COLLECTION_ID, state.currentRoomId, {
-                    lastUpdate: Date.now()
-                });
-            } catch (err) {
-                console.error('Keepalive chyba:', err);
-            }
-        }
-    }, 8000);
 }
 
 // =============================================
@@ -535,7 +513,6 @@ export async function setKilledBy(killerId) {
 
 window.addEventListener('beforeunload', () => { 
     if (state.currentRoomId) {
-        // Opustit synchronně
         leaveRoom(true);
     }
     removePlayerFromAppwrite(); 

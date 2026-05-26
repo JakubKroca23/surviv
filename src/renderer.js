@@ -31,31 +31,55 @@ export function drawGame() {
     ctx.save();
     ctx.translate(cx, cy);
 
-    // Podlaha
+    // 1. Podlaha
     drawGround(ctx);
 
-    // Zóna
+    // 2. Zóna
     drawZone(ctx);
 
-    // Překážky
-    drawObstacles(ctx);
+    // 3. Statické překážky kromě korun stromů (kmeny stromů, skály, krabice)
+    drawTrunksAndRocks(ctx);
 
-    // Loot
+    // 4. Loot na zemi
     drawLoot(ctx);
 
-    // Střely
+    // 5. Střely
     drawBullets(ctx);
 
-    // Ostatní hráči
+    // 6. Ostatní hráči (pokud nejsou skrytí pod stromem)
     for (const id in state.activePlayers) {
         const e = state.activePlayers[id];
-        if (e.hp > 0) drawCharacter(ctx, e, false);
+        if (e.hp > 0) {
+            // Zjistit, zda je nepřítel schovaný pod stromem
+            let isHidden = false;
+            for (const obs of state.mapObstacles) {
+                if (obs.type === 'tree' && obs.hp > 0) {
+                    const distEnemy = Math.hypot(e.x - obs.x, e.y - obs.y);
+                    if (distEnemy < obs.radius * 1.5) {
+                        // Nepřítel je pod tímto stromem!
+                        // Je lokální hráč pod stejným stromem?
+                        const distLocal = Math.hypot(p.x - obs.x, p.y - obs.y);
+                        if (distLocal >= obs.radius * 1.5) {
+                            // Lokální hráč není pod stejným stromem -> nepřítel je skrytý!
+                            isHidden = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (!isHidden) {
+                drawCharacter(ctx, e, false);
+            }
+        }
     }
 
-    // Lokální hráč
+    // 7. Lokální hráč
     drawCharacter(ctx, p, true);
 
-    // Hit markery
+    // 8. Koruny stromů s dynamickou průhledností navrch!
+    drawTreeCanopies(ctx);
+
+    // 9. Hit markery
     drawHitMarkers(ctx);
 
     ctx.restore();
@@ -123,26 +147,15 @@ function drawZone(ctx) {
 }
 
 // =============================================
-// PŘEKÁŽKY
+// KMENY, SKÁLY A KRABICE
 // =============================================
 
-function drawObstacles(ctx) {
+function drawTrunksAndRocks(ctx) {
     state.mapObstacles.forEach(obs => {
         if (obs.hp <= 0) return;
         ctx.save();
 
-
-        if (obs.type === 'tree') {
-            if (imgTree.complete && imgTree.naturalWidth > 0) {
-                const s = obs.radius * 3.5;
-                ctx.drawImage(imgTree, obs.x - s/2, obs.y - s/2, s, s);
-            } else {
-                ctx.fillStyle = '#0f4715';
-                ctx.beginPath(); ctx.arc(obs.x, obs.y, obs.radius * 1.1, 0, Math.PI * 2); ctx.fill();
-                ctx.fillStyle = '#16a34a';
-                ctx.beginPath(); ctx.arc(obs.x, obs.y, obs.radius * 0.9, 0, Math.PI * 2); ctx.fill();
-            }
-        } else if (obs.type === 'rock') {
+        if (obs.type === 'rock') {
             if (imgRock.complete && imgRock.naturalWidth > 0) {
                 const s = obs.radius * 2.5;
                 ctx.drawImage(imgRock, obs.x - s/2, obs.y - s/2, s, s);
@@ -152,16 +165,13 @@ function drawObstacles(ctx) {
                 ctx.fillStyle = '#57534e';
                 ctx.beginPath(); ctx.ellipse(obs.x - obs.radius * 0.1, obs.y - obs.radius * 0.15, obs.radius * 0.9, obs.radius * 0.65, 0.4, 0, Math.PI * 2); ctx.fill();
             }
-        } else {
-            // crate
+        } else if (obs.type === 'crate') {
             if (imgCrate.complete && imgCrate.naturalWidth > 0) {
                 const s = obs.radius * 2.2;
-                ctx.save();
                 ctx.translate(obs.x, obs.y);
                 const hpRatio = obs.hp / obs.maxHp;
                 ctx.globalAlpha = 0.5 + (0.5 * hpRatio);
                 ctx.drawImage(imgCrate, -s/2, -s/2, s, s);
-                ctx.restore();
             } else {
                 const hpRatio = obs.hp / obs.maxHp;
                 ctx.fillStyle = `hsl(30, 60%, ${15 + hpRatio * 10}%)`;
@@ -181,7 +191,65 @@ function drawObstacles(ctx) {
                 ctx.closePath();
                 ctx.fill();
             }
+        } else if (obs.type === 'tree') {
+            // Vykreslit pouze malý tmavý kmen stromu
+            ctx.fillStyle = '#453225'; // Dřevěná hnědá
+            ctx.beginPath();
+            ctx.arc(obs.x, obs.y, obs.radius * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            
+            ctx.strokeStyle = '#271c14';
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
         }
+        ctx.restore();
+    });
+}
+
+// =============================================
+// KORUNY STROMŮ (DRAWN AFTER PLAYERS)
+// =============================================
+
+function drawTreeCanopies(ctx) {
+    state.mapObstacles.forEach(obs => {
+        if (obs.type !== 'tree' || obs.hp <= 0) return;
+        ctx.save();
+
+        let playerUnder = false;
+
+        // Zkontrolovat zda lokální hráč je pod stromem
+        if (state.localPlayer && state.localPlayer.hp > 0) {
+            const d = Math.hypot(state.localPlayer.x - obs.x, state.localPlayer.y - obs.y);
+            if (d < obs.radius * 1.5) {
+                playerUnder = true;
+            }
+        }
+
+        // Zkontrolovat zda ostatní hráči v naší místnosti jsou pod stromem
+        if (!playerUnder) {
+            for (const id in state.activePlayers) {
+                const e = state.activePlayers[id];
+                if (e.hp > 0) {
+                    const d = Math.hypot(e.x - obs.x, e.y - obs.y);
+                    if (d < obs.radius * 1.5) {
+                        playerUnder = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Pokud je pod ním hráč, vykreslí se strom velmi průhledný (stealth mode)
+        ctx.globalAlpha = playerUnder ? 0.32 : 0.98;
+
+        if (imgTree.complete && imgTree.naturalWidth > 0) {
+            const s = obs.radius * 3.5;
+            ctx.drawImage(imgTree, obs.x - s/2, obs.y - s/2, s, s);
+        } else {
+            ctx.fillStyle = '#15803d';
+            ctx.beginPath(); ctx.arc(obs.x, obs.y, obs.radius * 1.2, 0, Math.PI * 2); ctx.fill();
+        }
+
         ctx.restore();
     });
 }
@@ -349,10 +417,26 @@ function drawMinimap() {
         mx.restore();
     }
 
-    // Ostatní hráči
+    // Ostatní hráči (pouze viditelní!)
     for (const id in state.activePlayers) {
         const e = state.activePlayers[id];
         if (e.hp > 0) {
+            // Zjistit schování pod stromem
+            let isHidden = false;
+            for (const obs of state.mapObstacles) {
+                if (obs.type === 'tree' && obs.hp > 0) {
+                    const distEnemy = Math.hypot(e.x - obs.x, e.y - obs.y);
+                    if (distEnemy < obs.radius * 1.5) {
+                        const distLocal = Math.hypot(p.x - obs.x, p.y - obs.y);
+                        if (distLocal >= obs.radius * 1.5) {
+                            isHidden = true;
+                            break;
+                        }
+                    }
+                }
+            }
+            if (isHidden) continue;
+
             mx.fillStyle = e.color || '#fff';
             mx.beginPath();
             mx.arc(e.x * scale, e.y * scale, 3, 0, Math.PI * 2);
