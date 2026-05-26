@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <title>Surviv.io Multiplayer</title>
+    <meta name="description" content="Surviv.io multiplayer battle royale – hratelné v prohlížeči na mobilu i PC.">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background-color: #1a1a1a;
+            user-select: none; -webkit-user-select: none; touch-action: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas { display: block; width: 100%; height: 100%; }
+        .joystick-container {
+            position: absolute; bottom: 24px; width: 120px; height: 120px;
+            background: rgba(255,255,255,0.1); border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%; touch-action: none; display: none; z-index: 10;
+        }
+        .joystick-handle {
+            position: absolute; width: 50px; height: 50px;
+            background: rgba(255,255,255,0.7); border-radius: 50%;
+            left: 35px; top: 35px; box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #joystick-left  { left: 5%; }
+        #joystick-right { right: 5%; }
+        /* Tailwind-like utilities */
+        .hidden { display: none !important; }
+        #lobby-screen {
+            position: absolute; inset: 0; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            background: linear-gradient(135deg, #1c1917, #022c22, #0c0a09);
+            z-index: 50; padding: 1rem;
+        }
+        .lobby-card {
+            background: rgba(28,25,23,0.9); border: 1px solid rgba(16,185,129,0.3);
+            padding: 1.5rem; border-radius: 1rem; box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            max-width: 28rem; width: 100%; text-align: center; backdrop-filter: blur(8px);
+        }
+        .lobby-title { font-size: 2.5rem; font-weight: 900; letter-spacing: 0.1em; color: #34d399; margin-bottom: 0.5rem; }
+        .lobby-sub { font-size: 0.7rem; letter-spacing: 0.2em; color: rgba(16,185,129,0.7); text-transform: uppercase; font-weight: 600; margin-bottom: 1.5rem; }
+        .input-label { display: block; text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c; margin-bottom: 0.25rem; }
+        #nickname-input {
+            width: 100%; background: #292524; color: #fff; border: 1px solid #44403c;
+            border-radius: 0.75rem; padding: 0.75rem 1rem; text-align: center; outline: none;
+            font-weight: 700; letter-spacing: 0.05em; box-sizing: border-box;
+            transition: border-color 0.2s;
+        }
+        #nickname-input:focus { border-color: #10b981; }
+        .skin-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.5rem; margin-top: 0.75rem; }
+        .skin-btn { height: 2.5rem; border-radius: 0.5rem; border: 2px solid transparent; cursor: pointer; transition: all 0.2s; }
+        .skin-btn.active { border-color: #fff; }
+        #btn-play {
+            width: 100%; font-weight: 900; font-size: 1.1rem; padding: 1rem;
+            border-radius: 0.75rem; text-transform: uppercase; letter-spacing: 0.1em;
+            border: none; cursor: not-allowed; margin-top: 1.5rem;
+            background: #292524; color: #78716c; transition: all 0.2s;
+        }
+        #btn-play.ready {
+            background: linear-gradient(to right, #10b981, #14b8a6);
+            color: #0c0a09; cursor: pointer;
+        }
+        #btn-play.ready:hover { filter: brightness(1.1); }
+        .online-section { margin-top: 1.5rem; border-top: 1px solid #292524; padding-top: 1rem; }
+        .online-title { text-align: left; font-size: 0.7rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c; margin-bottom: 0.5rem; }
+        #online-players-list { max-height: 8rem; overflow-y: auto; text-align: left; font-size: 0.875rem; color: #d6d3d1; }
+        .player-row { display: flex; justify-content: space-between; margin-bottom: 0.375rem; }
+        /* Game UI */
+        #game-ui {
+            position: absolute; inset: 0; pointer-events: none; user-select: none; z-index: 20;
+        }
+        #stats-panel { position: absolute; top: 1rem; left: 1rem; display: flex; flex-direction: column; gap: 0.375rem; pointer-events: auto; }
+        .stat-badge { background: rgba(0,0,0,0.6); padding: 0.375rem 0.75rem; border-radius: 0.5rem; border: 1px solid rgba(255,255,255,0.1); display: flex; align-items: center; gap: 0.5rem; }
+        .stat-badge i { font-size: 0.875rem; }
+        .stat-badge span { font-weight: 900; font-size: 0.875rem; color: #fff; }
+        #zone-hud { position: absolute; top: 1rem; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.6); padding: 0.5rem 1rem; border-radius: 0.75rem; border: 1px solid rgba(255,255,255,0.1); text-align: center; }
+        #zone-alert { font-size: 0.625rem; text-transform: uppercase; font-weight: 800; letter-spacing: 0.15em; color: #34d399; }
+        #zone-timer { font-size: 1rem; font-weight: 900; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; color: #fff; }
+        #health-bar-wrap { position: absolute; top: 5rem; left: 50%; transform: translateX(-50%); width: 16rem; pointer-events: auto; }
+        #health-bar-bg { position: relative; width: 100%; height: 1.25rem; background: #0c0a09; border-radius: 9999px; border: 1px solid rgba(255,255,255,0.1); overflow: hidden; }
+        #health-bar-fill { height: 100%; background: linear-gradient(to right, #10b981, #4ade80); width: 100%; transition: width 0.1s; }
+        #health-bar-text { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 0.65rem; color: #0c0a09; letter-spacing: 0.05em; }
+        #minimap-wrap { position: absolute; top: 1rem; right: 1rem; background: rgba(0,0,0,0.8); border: 1px solid rgba(255,255,255,0.2); border-radius: 0.75rem; overflow: hidden; }
+        #minimap-canvas { width: 80px; height: 80px; display: block; }
+        #weapon-panel { position: absolute; bottom: 10rem; right: 1rem; width: 12rem; pointer-events: auto; }
+        .weapon-card { display: flex; justify-content: space-between; align-items: center; background: rgba(0,0,0,0.75); border: 1px solid rgba(255,255,255,0.1); border-radius: 0.75rem; padding: 0.5rem 0.75rem; }
+        #weapon-name { font-weight: 900; font-size: 0.6rem; text-transform: uppercase; letter-spacing: 0.1em; color: #78716c; }
+        #weapon-ammo { font-weight: 900; font-size: 0.875rem; letter-spacing: 0.1em; font-variant-numeric: tabular-nums; color: #fff; }
+        #weapon-icon { font-size: 1.25rem; color: #34d399; }
+        #heal-btn-wrap { position: absolute; bottom: 14rem; right: 1rem; pointer-events: auto; }
+        #btn-heal {
+            width: 3rem; height: 3rem; background: #10b981; border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.15s; color: #0c0a09;
+        }
+        #btn-heal:hover { background: #34d399; }
+        #btn-heal:active { transform: scale(0.95); }
+        #medkit-count { font-size: 0.55rem; font-weight: 900; }
+        /* Death screen */
+        #death-screen {
+            position: absolute; inset: 0; background: rgba(0,0,0,0.85);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 45; padding: 1rem; backdrop-filter: blur(8px);
+        }
+        .death-card { max-width: 28rem; width: 100%; background: #1c1917; border: 2px solid rgba(220,38,38,0.3); border-radius: 1rem; padding: 2rem; text-align: center; }
+        .death-icon { width: 5rem; height: 5rem; background: rgba(127,29,29,0.3); border: 1px solid rgba(239,68,68,0.5); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 1rem; }
+        #btn-respawn {
+            width: 100%; background: linear-gradient(to right, #10b981, #14b8a6);
+            color: #0c0a09; font-weight: 900; padding: 1rem; border-radius: 0.75rem;
+            text-transform: uppercase; letter-spacing: 0.1em; border: none; cursor: pointer;
+            transition: all 0.15s;
+        }
+        #btn-respawn:active { transform: scale(0.98); }
+        .death-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; background: #0c0a09; padding: 1rem; border-radius: 0.75rem; border: 1px solid #292524; }
+    </style>
+</head>
+<body>
+
+    <!-- LOBBY -->
+    <div id="lobby-screen">
+        <div class="lobby-card">
+            <h1 class="lobby-title">SURVIV.IO</h1>
+            <p class="lobby-sub">Mobile Web Edition</p>
+
+            <div style="margin-bottom:1.5rem">
+                <label class="input-label" for="nickname-input">Přezdívka</label>
+                <input type="text" id="nickname-input" maxlength="12" placeholder="Zadej jméno...">
+                <div class="skin-grid">
+                    <button class="skin-btn active" id="skin-1" style="background:#22c55e" onclick="window.setSkin('#22c55e')"></button>
+                    <button class="skin-btn"        id="skin-2" style="background:#3b82f6" onclick="window.setSkin('#3b82f6')"></button>
+                    <button class="skin-btn"        id="skin-3" style="background:#f97316" onclick="window.setSkin('#f97316')"></button>
+                </div>
+            </div>
+
+            <button id="btn-play" disabled>Připojování k serveru...</button>
+
+            <div class="online-section">
+                <div class="online-title">Hráči online:</div>
+                <div id="online-players-list">
+                    <div style="color:#78716c">Načítání bojiště...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HRA UI -->
+    <div id="game-ui" style="display:none">
+        <div id="stats-panel">
+            <div class="stat-badge"><i class="fa-solid fa-skull" style="color:#f43f5e"></i><span id="stat-kills">Killy: 0</span></div>
+            <div class="stat-badge"><i class="fa-solid fa-user-group" style="color:#38bdf8"></i><span id="stat-alive">Naživu: 1</span></div>
+        </div>
+        <div id="zone-hud">
+            <div id="zone-alert">Zóna je stabilní</div>
+            <div id="zone-timer">05:00</div>
+        </div>
+        <div id="health-bar-wrap">
+            <div id="health-bar-bg">
+                <div id="health-bar-fill"></div>
+                <div id="health-bar-text">100 / 100 HP</div>
+            </div>
+        </div>
+        <div id="minimap-wrap">
+            <canvas id="minimap-canvas" width="112" height="112"></canvas>
+        </div>
+        <div id="weapon-panel">
+            <div class="weapon-card">
+                <div>
+                    <div id="weapon-name">Pěsti</div>
+                    <div id="weapon-ammo">∞ / ∞</div>
+                </div>
+                <div id="weapon-icon"><i class="fa-solid fa-hand-fist"></i></div>
+            </div>
+        </div>
+        <div id="heal-btn-wrap" style="display:none">
+            <button id="btn-heal">
+                <i class="fa-solid fa-prescription-bottle-medical" style="font-size:1.1rem;margin-bottom:2px"></i>
+                <span id="medkit-count">2x</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- DEATH SCREEN -->
+    <div id="death-screen">
+        <div class="death-card">
+            <div class="death-icon"><i class="fa-solid fa-skull-crossbones" style="font-size:2.5rem;color:#ef4444"></i></div>
+            <h2 style="font-size:2rem;font-weight:900;color:#ef4444;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.5rem">Konec hry!</h2>
+            <p id="death-killer-text" style="color:#78716c;margin-bottom:1.5rem">Byl jsi eliminován divokou zónou.</p>
+            <div class="death-stats">
+                <div><div style="font-size:0.7rem;color:#78716c;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Killy</div><div id="death-stat-kills" style="font-size:1.5rem;font-weight:900;color:#fff">0</div></div>
+                <div><div style="font-size:0.7rem;color:#78716c;font-weight:700;text-transform:uppercase;letter-spacing:0.1em">Čas přežití</div><div id="death-stat-time" style="font-size:1.5rem;font-weight:900;color:#fff">0:00</div></div>
+            </div>
+            <button id="btn-respawn">Zpět do lobby</button>
+        </div>
+    </div>
+
+    <!-- JOYSTICKY -->
+    <div id="joystick-left"  class="joystick-container"><div class="joystick-handle"></div></div>
+    <div id="joystick-right" class="joystick-container"><div class="joystick-handle"></div></div>
+
+    <!-- CANVAS -->
+    <canvas id="game-canvas"></canvas>
+
+    <script type="module" src="/src/main.js"></script>
+</body>
+</html>
