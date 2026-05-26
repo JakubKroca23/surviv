@@ -1,0 +1,17 @@
+services:
+  surviv:
+    build: .
+    restart: unless-stopped
+    networks:
+      - appwrite
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.surviv.rule=Host(`surviv.propoj.app`)"
+      - "traefik.http.routers.surviv.entrypoints=websecure"
+      - "traefik.http.routers.surviv.tls=true"
+      - "traefik.http.routers.surviv.tls.certresolver=letsencrypt"
+      - "traefik.http.services.surviv.loadbalancer.server.port=80"
+
+networks:
+  appwrite:
+    external: true

@@ -1,0 +1,1058 @@
+<!DOCTYPE html>
+<html lang="cs">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, shrink-to-fit=no">
+    <title>Surviv.io Multiplayer</title>
+    <meta name="description" content="Surviv.io multiplayer battle royale – hratelné v prohlížeči na mobilu i PC.">
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Appwrite Web SDK (IIFE) -->
+    <script src="https://cdn.jsdelivr.net/npm/appwrite@17/dist/iife/sdk.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #1a1a1a;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .joystick-container {
+            position: absolute;
+            bottom: 24px;
+            width: 120px;
+            height: 120px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 2px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            touch-action: none;
+            display: none;
+            z-index: 10;
+        }
+        .joystick-handle {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background: rgba(255, 255, 255, 0.7);
+            border-radius: 50%;
+            left: 35px;
+            top: 35px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+        #joystick-left { left: 5%; }
+        #joystick-right { right: 5%; }
+    </style>
+</head>
+<body class="bg-stone-900 text-white">
+
+    <!-- LOBBY / PŘIHLAŠOVACÍ OBRAZOVKA -->
+    <div id="lobby-screen" class="absolute inset-0 flex flex-col items-center justify-center bg-gradient-to-br from-stone-900 via-emerald-950 to-stone-950 z-50 p-4">
+        <div class="bg-stone-900/90 border border-emerald-500/30 p-6 rounded-2xl shadow-2xl max-w-md w-full text-center backdrop-blur-md">
+            <h1 class="text-4xl font-black tracking-wider text-emerald-400 mb-2">SURVIV.IO</h1>
+            <p class="text-xs tracking-widest text-emerald-500/80 uppercase font-semibold mb-6">Mobile Web Edition</p>
+
+            <div class="space-y-4 mb-6">
+                <div>
+                    <label class="block text-left text-xs font-bold uppercase tracking-wider text-stone-400 mb-1">Přezdívka</label>
+                    <input type="text" id="nickname-input" maxlength="12" placeholder="Zadej jméno..."
+                        class="w-full bg-stone-800 text-white border border-stone-700 focus:border-emerald-500 rounded-xl px-4 py-3 text-center outline-none font-bold tracking-wide transition-all">
+                </div>
+
+                <div class="grid grid-cols-3 gap-2">
+                    <button type="button" onclick="setSkin('#22c55e')" class="h-10 bg-emerald-500 rounded-lg border-2 border-white focus:outline-none transition-all" id="skin-1"></button>
+                    <button type="button" onclick="setSkin('#3b82f6')" class="h-10 bg-blue-500 rounded-lg border-2 border-transparent hover:border-white focus:outline-none transition-all" id="skin-2"></button>
+                    <button type="button" onclick="setSkin('#f97316')" class="h-10 bg-orange-500 rounded-lg border-2 border-transparent hover:border-white focus:outline-none transition-all" id="skin-3"></button>
+                </div>
+            </div>
+
+            <button id="btn-play" disabled class="w-full bg-stone-800 text-stone-500 font-black text-lg py-4 rounded-xl tracking-wider uppercase transition-all cursor-not-allowed">
+                Připojování k serveru...
+            </button>
+
+            <div class="mt-6 border-t border-stone-800 pt-4">
+                <h3 class="text-left text-xs font-bold text-stone-400 uppercase tracking-wider mb-2">Hráči online:</h3>
+                <div id="online-players-list" class="space-y-1.5 max-h-32 overflow-y-auto text-left text-sm text-stone-300">
+                    <div class="animate-pulse text-stone-500">Načítání bojiště...</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- HRA - ROZHRANÍ -->
+    <div id="game-ui" class="hidden absolute inset-0 pointer-events-none select-none z-20">
+        <!-- Statistiky (Levý horní roh) -->
+        <div class="absolute top-4 left-4 flex flex-col gap-1.5 pointer-events-auto">
+            <div class="bg-black/60 px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-2">
+                <i class="fa-solid fa-skull text-rose-500"></i>
+                <span id="stat-kills" class="font-black text-sm">Killy: 0</span>
+            </div>
+            <div class="bg-black/60 px-3 py-1.5 rounded-lg border border-white/10 flex items-center gap-2">
+                <i class="fa-solid fa-user-group text-sky-400"></i>
+                <span id="stat-alive" class="font-black text-sm">Naživu: 1</span>
+            </div>
+        </div>
+
+        <!-- Časovač zóny (Horní střed) -->
+        <div class="absolute top-4 left-1/2 -translate-x-1/2 bg-black/60 px-4 py-2 rounded-xl border border-white/10 text-center">
+            <div id="zone-alert" class="text-[10px] uppercase font-extrabold tracking-widest text-emerald-400">Zóna je stabilní</div>
+            <div id="zone-timer" class="text-base font-black tracking-wider font-mono">05:00</div>
+        </div>
+
+        <!-- Ukazatel životů -->
+        <div class="absolute top-20 left-1/2 -translate-x-1/2 w-64 sm:w-80 pointer-events-auto">
+            <div class="relative w-full h-5 bg-stone-950 rounded-full border border-white/10 overflow-hidden shadow-lg">
+                <div id="health-bar-fill" class="h-full bg-gradient-to-r from-emerald-500 to-green-400 w-full transition-all duration-100"></div>
+                <span id="health-bar-text" class="absolute inset-0 flex items-center justify-center font-black text-[10px] sm:text-xs text-stone-950 tracking-wider">100 / 100 HP</span>
+            </div>
+        </div>
+
+        <!-- Minimapa (Pravý horní roh) -->
+        <div class="absolute top-4 right-4 bg-black/80 border border-white/20 rounded-xl overflow-hidden shadow-xl">
+            <canvas id="minimap-canvas" class="w-20 h-20 sm:w-28 sm:h-28"></canvas>
+        </div>
+
+        <!-- Panel aktivní zbraně -->
+        <div class="absolute bottom-40 right-4 w-48 sm:w-56 pointer-events-auto">
+            <div class="flex justify-between items-center bg-black/75 border border-white/10 rounded-xl px-3 py-2 backdrop-blur-sm shadow-lg">
+                <div class="flex flex-col">
+                    <span id="weapon-name" class="font-black text-[9px] uppercase tracking-wider text-stone-400">Pěsti</span>
+                    <span id="weapon-ammo" class="font-black text-sm tracking-widest font-mono text-white">∞ / ∞</span>
+                </div>
+                <div class="text-right">
+                    <span id="weapon-type-icon" class="text-xl text-emerald-400"><i class="fa-solid fa-hand-fist"></i></span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Léčení -->
+        <div id="heal-button-container" class="hidden absolute bottom-56 right-4 pointer-events-auto">
+            <button id="btn-heal" class="w-12 h-12 bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-stone-950 rounded-full border-2 border-white/20 flex flex-col items-center justify-center shadow-lg transition-all">
+                <i class="fa-solid fa-prescription-bottle-medical text-lg mb-0.5"></i>
+                <span id="medkit-count" class="text-[9px] font-black">2x</span>
+            </button>
+        </div>
+    </div>
+
+    <!-- OBRAZOVKA KONCE HRY -->
+    <div id="death-screen" class="hidden absolute inset-0 bg-black/85 flex flex-col items-center justify-center z-45 p-4 backdrop-blur-md">
+        <div class="max-w-md w-full bg-stone-900 border-2 border-rose-600/30 rounded-2xl p-8 text-center shadow-2xl">
+            <div class="w-20 h-20 bg-rose-900/30 border border-rose-500/50 rounded-full flex items-center justify-center mx-auto mb-4">
+                <i class="fa-solid fa-skull-crossbones text-4xl text-rose-500"></i>
+            </div>
+            <h2 class="text-3xl font-black text-rose-500 uppercase tracking-wider mb-2">Konec hry!</h2>
+            <p id="death-killer-text" class="text-stone-400 mb-6">Byl jsi eliminován divokou zónou.</p>
+
+            <div class="grid grid-cols-2 gap-4 mb-6 bg-stone-950 p-4 rounded-xl border border-stone-800">
+                <div>
+                    <div class="text-xs text-stone-500 font-bold uppercase tracking-wider">Killy</div>
+                    <div id="death-stat-kills" class="text-2xl font-black text-white">0</div>
+                </div>
+                <div>
+                    <div class="text-xs text-stone-500 font-bold uppercase tracking-wider">Čas přežití</div>
+                    <div id="death-stat-time" class="text-2xl font-black text-white">0:00</div>
+                </div>
+            </div>
+
+            <button id="btn-respawn" class="w-full bg-gradient-to-r from-emerald-500 to-teal-500 text-stone-950 font-black py-4 rounded-xl tracking-wider uppercase shadow-lg shadow-emerald-500/20 active:scale-95 transition-all">
+                Zpět do lobby
+            </button>
+        </div>
+    </div>
+
+    <!-- DOTYKOVÉ JOYSTICKY -->
+    <div id="joystick-left" class="joystick-container">
+        <div class="joystick-handle"></div>
+    </div>
+    <div id="joystick-right" class="joystick-container">
+        <div class="joystick-handle"></div>
+    </div>
+
+    <!-- HLAVNÍ CANVAS -->
+    <canvas id="game-canvas"></canvas>
+
+    <script>
+        // =============================================
+        // APPWRITE KONFIGURACE
+        // =============================================
+        const APPWRITE_ENDPOINT   = 'https://appwrite.propoj.app/v1';
+        const APPWRITE_PROJECT_ID = 'surviv';
+        const DATABASE_ID         = 'surviv';
+        const COLLECTION_ID       = 'players';
+
+        const client = new Appwrite.Client()
+            .setEndpoint(APPWRITE_ENDPOINT)
+            .setProject(APPWRITE_PROJECT_ID);
+
+        const account   = new Appwrite.Account(client);
+        const databases = new Appwrite.Databases(client);
+
+        // =============================================
+        // HERNÍ STAV
+        // =============================================
+        const MAP_SIZE = 2500;
+        let isMobile = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+        let currentUser       = null;
+        let playerDocCreated  = false;
+        let realtimeUnsub     = null;
+
+        // Unikátní ID pro každou záložku/instanci
+        let playerId = 'p_' + Math.random().toString(36).substring(2, 10) + '_' + Date.now().toString().slice(-4);
+
+        let localPlayer    = null;
+        let activePlayers  = {};   // ostatní hráči (interpolovaní)
+        let rawPlayers     = {};   // poslední data z Appwrite (pro lobby list)
+        let localBullets   = [];
+        let mapObstacles   = [];
+        let itemsOnGround  = [];
+        let networkInterval = null;
+        let gameActive     = false;
+        let playStartTime  = 0;
+
+        let selectedSkin = '#22c55e';
+
+        // Canvas (inicializovány v window.onload)
+        let canvas, ctx, minimapCanvas, mctx;
+
+        // =============================================
+        // ZBRANĚ
+        // =============================================
+        const WEAPONS = {
+            fists:  { name: "Pěsti",              damage: 15, cooldown: 350,  speed: 12, spread: 0,    count: 1, range: 60,   icon: 'fa-solid fa-hand-fist' },
+            pistol: { name: "Pistole M9",          damage: 22, cooldown: 250,  speed: 20, spread: 0.05, count: 1, range: 600,  icon: 'fa-solid fa-gun',           ammoMax: 15, reloadTime: 1200 },
+            shotgun:{ name: "MP-220 Brokovnice",   damage: 13, cooldown: 150,  speed: 17, spread: 0.35, count: 6, range: 350,  icon: 'fa-solid fa-shield-halved', ammoMax: 2,  reloadTime: 1800 },
+            smg:    { name: "Samopal Vector",       damage: 14, cooldown: 80,   speed: 22, spread: 0.12, count: 1, range: 500,  icon: 'fa-solid fa-fire',          ammoMax: 33, reloadTime: 1400 },
+            rifle:  { name: "Puška AK-47",          damage: 30, cooldown: 150,  speed: 25, spread: 0.08, count: 1, range: 800,  icon: 'fa-solid fa-person-rifle',  ammoMax: 30, reloadTime: 1500 },
+            sniper: { name: "Odstřelovačka AWM",   damage: 70, cooldown: 1500, speed: 32, spread: 0.01, count: 1, range: 1200, icon: 'fa-solid fa-crosshairs',    ammoMax: 5,  reloadTime: 2200 }
+        };
+
+        // =============================================
+        // GENEROVÁNÍ MAPY (deterministické)
+        // =============================================
+        function generateObstacles() {
+            const list = [];
+            let seed = 42;
+            function random() { let x = Math.sin(seed++) * 10000; return x - Math.floor(x); }
+            for (let i = 0; i < 85; i++) {
+                const type = random() < 0.35 ? 'tree' : (random() < 0.65 ? 'rock' : 'crate');
+                list.push({
+                    id: `obs_${i}`, type,
+                    x: random() * (MAP_SIZE - 200) + 100,
+                    y: random() * (MAP_SIZE - 200) + 100,
+                    radius: type === 'tree' ? 70 : (type === 'rock' ? 45 : 35),
+                    hp: type === 'crate' ? 100 : 1000,
+                    maxHp: type === 'crate' ? 100 : 1000,
+                    color: type === 'tree' ? '#15803d' : (type === 'rock' ? '#78716c' : '#b45309'),
+                    lootType: random() < 0.25 ? 'pistol' : (random() < 0.45 ? 'smg' : (random() < 0.65 ? 'rifle' : (random() < 0.85 ? 'shotgun' : (random() < 0.93 ? 'sniper' : 'medkit'))))
+                });
+            }
+            return list;
+        }
+        mapObstacles = generateObstacles();
+
+        function generateSpawnedLoot() {
+            const list = [];
+            let seed = 999;
+            function random() { let x = Math.sin(seed++) * 10000; return x - Math.floor(x); }
+            const types = ['pistol', 'shotgun', 'smg', 'rifle', 'sniper', 'medkit'];
+            for (let i = 0; i < 45; i++) {
+                list.push({ x: random() * (MAP_SIZE - 200) + 100, y: random() * (MAP_SIZE - 200) + 100, type: types[Math.floor(random() * types.length)] });
+            }
+            return list;
+        }
+
+        // =============================================
+        // OVLÁDÁNÍ
+        // =============================================
+        const joystickLeft  = { active: false, startX: 0, startY: 0, vx: 0, vy: 0 };
+        const joystickRight = { active: false, startX: 0, startY: 0, vx: 0, vy: 0, isAiming: false };
+        const keys = { w: false, a: false, s: false, d: false };
+        let mouseX = 0, mouseY = 0, isMouseDown = false;
+
+        // =============================================
+        // ZÓNA
+        // =============================================
+        function getZoneState() {
+            const cycleMs  = 300000;
+            const elapsed  = (Date.now() % cycleMs) / 1000;
+            let center = { x: MAP_SIZE / 2, y: MAP_SIZE / 2 };
+            let radius, statusText, state;
+
+            if (elapsed < 60) {
+                radius = MAP_SIZE * 1.1; statusText = "Zóna je stabilní"; state = 'stable';
+            } else if (elapsed < 180) {
+                const t = (elapsed - 60) / 120;
+                radius = (MAP_SIZE * 1.1) - t * (MAP_SIZE * 0.9); statusText = "POZOR: Zóna se smršťuje!"; state = 'shrinking';
+            } else if (elapsed < 240) {
+                radius = MAP_SIZE * 0.2; statusText = "Zóna je kriticky malá!"; state = 'stable_small';
+            } else {
+                const t = (elapsed - 240) / 60;
+                radius = (MAP_SIZE * 0.2) - t * (MAP_SIZE * 0.19); statusText = "FINÁLNÍ KOLAPS ZÓNY!"; state = 'collapsing';
+            }
+
+            const rem = Math.max(0, Math.ceil(300 - elapsed));
+            return { center, radius, timerText: `${Math.floor(rem / 60)}:${String(rem % 60).padStart(2,'0')}`, statusText, state };
+        }
+
+        // =============================================
+        // TŘÍDA HRÁČE
+        // =============================================
+        class Player {
+            constructor(id, name, color) {
+                this.id = id; this.name = name; this.color = color;
+                this.x = Math.random() * (MAP_SIZE - 400) + 200;
+                this.y = Math.random() * (MAP_SIZE - 400) + 200;
+                this.radius = 28; this.speed = 4.5; this.angle = 0;
+                this.hp = 100; this.maxHp = 100; this.kills = 0; this.countedKills = {};
+                this.currentWeapon = 'fists';
+                this.weapons = { fists: true };
+                this.ammo = { pistol: WEAPONS.pistol.ammoMax, shotgun: WEAPONS.shotgun.ammoMax, smg: WEAPONS.smg.ammoMax, rifle: WEAPONS.rifle.ammoMax, sniper: WEAPONS.sniper.ammoMax };
+                this.medkits = 1; this.lastShotTime = 0; this.isHealRunning = false;
+            }
+
+            shoot() {
+                if (this.hp <= 0) return;
+                const weapon = WEAPONS[this.currentWeapon];
+                const now = Date.now();
+                if (now - this.lastShotTime < weapon.cooldown) return;
+                if (this.currentWeapon !== 'fists') {
+                    if (this.ammo[this.currentWeapon] <= 0) { this.reload(); return; }
+                    this.ammo[this.currentWeapon]--;
+                    updateUI();
+                }
+                this.lastShotTime = now;
+                for (let i = 0; i < weapon.count; i++) {
+                    const dev = (Math.random() - 0.5) * weapon.spread;
+                    const ba  = this.angle + dev;
+                    localBullets.push({
+                        id: `${this.id}_${now}_${i}`, ownerId: this.id,
+                        x: this.x + Math.cos(this.angle) * (this.radius + 15),
+                        y: this.y + Math.sin(this.angle) * (this.radius + 15),
+                        vx: Math.cos(ba) * weapon.speed, vy: Math.sin(ba) * weapon.speed,
+                        damage: weapon.damage, range: weapon.range, travelled: 0,
+                        color: this.color, timestamp: now
+                    });
+                }
+            }
+
+            reload() {
+                if (this.currentWeapon === 'fists') return;
+                const weapon = WEAPONS[this.currentWeapon];
+                if (this.ammo[this.currentWeapon] === weapon.ammoMax) return;
+                const rTime = weapon.reloadTime || 1200;
+                this.lastShotTime = Date.now() + rTime;
+                setTimeout(() => { if (this.currentWeapon !== 'fists') { this.ammo[this.currentWeapon] = weapon.ammoMax; updateUI(); } }, rTime);
+            }
+
+            useHeal() {
+                if (this.medkits <= 0 || this.hp >= this.maxHp || this.isHealRunning) return;
+                this.isHealRunning = true;
+                setTimeout(() => {
+                    if (this.hp > 0 && this.medkits > 0) {
+                        this.hp = Math.min(this.maxHp, this.hp + 50);
+                        this.medkits--;
+                        this.isHealRunning = false;
+                        updateUI();
+                    }
+                }, 3000);
+            }
+        }
+
+        // =============================================
+        // APPWRITE – AUTENTIZACE & DATABÁZE
+        // =============================================
+
+        async function initAppwriteAndJoin() {
+            try {
+                // Pokud nemáme session, vytvoříme anonymní
+                try { await account.get(); } catch { await account.createAnonymousSession(); }
+                currentUser = await account.get();
+                console.log('✅ Appwrite: přihlášen. Herní ID:', playerId);
+
+                const btnPlay = document.getElementById('btn-play');
+                btnPlay.disabled = false;
+                btnPlay.innerText = 'Vstoupit do boje';
+                btnPlay.className = 'w-full bg-gradient-to-r from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 text-stone-950 font-black text-lg py-4 rounded-xl tracking-wider uppercase shadow-lg shadow-emerald-500/20 active:scale-95 cursor-pointer transition-all';
+
+                await fetchAllPlayers();
+                subscribeToPlayers();
+            } catch (err) {
+                console.error('❌ Appwrite init chyba:', err);
+                const btnPlay = document.getElementById('btn-play');
+                btnPlay.innerText = '❌ Chyba připojení – obnovte stránku';
+            }
+        }
+
+        function subscribeToPlayers() {
+            if (realtimeUnsub) realtimeUnsub();
+            realtimeUnsub = client.subscribe(
+                `databases.${DATABASE_ID}.collections.${COLLECTION_ID}.documents`,
+                handleRealtimeEvent
+            );
+            console.log('📡 Realtime subscription aktivní');
+        }
+
+        async function fetchAllPlayers() {
+            try {
+                const res = await databases.listDocuments(DATABASE_ID, COLLECTION_ID, [
+                    Appwrite.Query.greaterThan('lastUpdate', Date.now() - 10000),
+                    Appwrite.Query.limit(100)
+                ]);
+                rawPlayers = {};
+                res.documents.forEach(data => {
+                    rawPlayers[data.$id] = data;
+                    if (data.$id !== playerId) {
+                        activePlayers[data.$id] = { ...data };
+                    }
+                });
+                updateOnlineList();
+            } catch (err) {
+                console.error('Chyba fetchAllPlayers:', err);
+            }
+        }
+
+        function handleRealtimeEvent(response) {
+            const events = response.events;
+            const data   = response.payload;
+            const pid    = data.$id;
+
+            const isDelete = events.some(e => e.includes('.delete'));
+
+            if (isDelete) {
+                delete rawPlayers[pid];
+                delete activePlayers[pid];
+                updateOnlineList();
+                return;
+            }
+
+            // Create / Update
+            const age = Date.now() - (data.lastUpdate || 0);
+            if (age > 10000) return;
+
+            rawPlayers[pid] = data;
+
+            if (pid !== playerId) {
+                // Synchronizace střel ostatních hráčů
+                if (data.activeBullets) {
+                    try {
+                        const bullets = JSON.parse(data.activeBullets);
+                        bullets.forEach(b => {
+                            if (Date.now() - (b.timestamp || 0) < 1500 && !localBullets.some(lb => lb.id === b.id)) {
+                                localBullets.push(b);
+                            }
+                        });
+                    } catch (e) {}
+                }
+
+                // Kill credit – pokud je v dokumentu nepřítele killedBy === můj playerId
+                if (localPlayer && data.killedBy === playerId && !localPlayer.countedKills[pid]) {
+                    localPlayer.countedKills[pid] = true;
+                    localPlayer.kills++;
+                    updateUI();
+                    updatePlayerOnAppwrite();
+                }
+
+                // Aktualizace nebo vytvoření záznamu v activePlayers
+                if (!activePlayers[pid]) {
+                    activePlayers[pid] = { ...data };
+                } else {
+                    activePlayers[pid].targetX      = data.x;
+                    activePlayers[pid].targetY      = data.y;
+                    activePlayers[pid].targetAngle  = data.angle;
+                    activePlayers[pid].hp           = data.hp;
+                    activePlayers[pid].kills        = data.kills;
+                    activePlayers[pid].currentWeapon = data.currentWeapon;
+                    activePlayers[pid].color        = data.color;
+                    activePlayers[pid].name         = data.name;
+                }
+            }
+
+            updateOnlineList();
+        }
+
+        function updateOnlineList() {
+            const el = document.getElementById('online-players-list');
+            let html = '';
+            let alive = 0;
+            for (const pid in rawPlayers) {
+                const d = rawPlayers[pid];
+                html += `<div class="flex items-center justify-between">
+                    <span class="font-bold text-stone-300">${d.name || 'Bojovník'}</span>
+                    <span class="text-xs text-stone-500">${d.hp > 0 ? 'Ve hře' : 'Mrtvý'}</span>
+                </div>`;
+                if (d.hp > 0) alive++;
+            }
+            if (el) el.innerHTML = html || '<div class="text-stone-500">Žádní bojovníci v okolí.</div>';
+            const aliveEl = document.getElementById('stat-alive');
+            if (aliveEl) aliveEl.innerText = `Naživu: ${alive}`;
+        }
+
+        async function updatePlayerOnAppwrite() {
+            if (!currentUser || !localPlayer || localPlayer.hp <= 0) return;
+
+            const bulletsToSend = localBullets
+                .filter(b => b.ownerId === playerId && !b.synced)
+                .map(b => {
+                    b.synced = true;
+                    return { id: b.id, ownerId: b.ownerId, x: b.x, y: b.y, vx: b.vx, vy: b.vy, damage: b.damage, range: b.range, color: b.color, timestamp: b.timestamp };
+                });
+
+            const payload = {
+                name:          localPlayer.name,
+                x:             localPlayer.x,
+                y:             localPlayer.y,
+                angle:         localPlayer.angle,
+                hp:            localPlayer.hp,
+                color:         localPlayer.color,
+                kills:         localPlayer.kills,
+                currentWeapon: localPlayer.currentWeapon,
+                activeBullets: JSON.stringify(bulletsToSend),
+                lastUpdate:    Date.now(),
+                killedBy:      ''
+            };
+
+            try {
+                if (!playerDocCreated) {
+                    await databases.createDocument(DATABASE_ID, COLLECTION_ID, playerId, payload, [
+                        Appwrite.Permission.read(Appwrite.Role.any()),
+                        Appwrite.Permission.update(Appwrite.Role.any()),
+                        Appwrite.Permission.delete(Appwrite.Role.any()),
+                    ]);
+                    playerDocCreated = true;
+                } else {
+                    await databases.updateDocument(DATABASE_ID, COLLECTION_ID, playerId, payload);
+                }
+            } catch (err) {
+                console.error('Sync chyba:', err);
+                if (err.code === 404 || (err.type && err.type.includes('not_found'))) {
+                    playerDocCreated = false;
+                }
+            }
+        }
+
+        async function removePlayerFromAppwrite() {
+            if (!currentUser || !playerId) return;
+            try {
+                await databases.deleteDocument(DATABASE_ID, COLLECTION_ID, playerId);
+                playerDocCreated = false;
+            } catch (e) {}
+        }
+
+        window.addEventListener('beforeunload', () => { removePlayerFromAppwrite(); });
+
+        // =============================================
+        // SKINY
+        // =============================================
+        window.setSkin = function(color) {
+            selectedSkin = color;
+            document.querySelectorAll('#skin-1, #skin-2, #skin-3').forEach(b => b.classList.remove('border-white'));
+            if (color === '#22c55e') document.getElementById('skin-1').classList.add('border-white');
+            if (color === '#3b82f6') document.getElementById('skin-2').classList.add('border-white');
+            if (color === '#f97316') document.getElementById('skin-3').classList.add('border-white');
+        };
+
+        // =============================================
+        // EVENT HANDLERY
+        // =============================================
+        document.getElementById('btn-play').addEventListener('click', () => {
+            if (!currentUser) return;
+
+            const nick = document.getElementById('nickname-input').value.trim() || 'Hráč_' + Math.floor(Math.random() * 900 + 100);
+            localPlayer  = new Player(playerId, nick, selectedSkin);
+            localBullets = [];
+
+            // Spawn mimo překážky
+            let validSpawn = false;
+            while (!validSpawn) {
+                localPlayer.x = Math.random() * (MAP_SIZE - 400) + 200;
+                localPlayer.y = Math.random() * (MAP_SIZE - 400) + 200;
+                validSpawn = true;
+                for (const obs of mapObstacles) {
+                    if (Math.hypot(localPlayer.x - obs.x, localPlayer.y - obs.y) < obs.radius + localPlayer.radius + 20) {
+                        validSpawn = false; break;
+                    }
+                }
+            }
+
+            itemsOnGround = generateSpawnedLoot();
+
+            document.getElementById('lobby-screen').style.display  = 'none';
+            document.getElementById('game-ui').style.display       = 'block';
+            document.getElementById('death-screen').style.display  = 'none';
+
+            if (isMobile) {
+                document.getElementById('joystick-left').style.display  = 'block';
+                document.getElementById('joystick-right').style.display = 'block';
+            }
+
+            gameActive    = true;
+            playStartTime = Date.now();
+            updateUI();
+            updatePlayerOnAppwrite();
+
+            if (networkInterval) clearInterval(networkInterval);
+            networkInterval = setInterval(() => { if (gameActive) updatePlayerOnAppwrite(); }, 120);
+        });
+
+        document.getElementById('btn-respawn').addEventListener('click', () => {
+            document.getElementById('death-screen').style.display = 'none';
+            document.getElementById('lobby-screen').style.display = 'flex';
+        });
+
+        document.getElementById('btn-heal').addEventListener('click', () => { if (localPlayer) localPlayer.useHeal(); });
+
+        if (isMobile) { setupMobileControls(); } else { setupDesktopControls(); }
+
+        function setupMobileControls() {
+            const leftEl   = document.getElementById('joystick-left');
+            const rightEl  = document.getElementById('joystick-right');
+            const hLeft    = leftEl.querySelector('.joystick-handle');
+            const hRight   = rightEl.querySelector('.joystick-handle');
+
+            leftEl.addEventListener('touchstart', () => {
+                const r = leftEl.getBoundingClientRect();
+                joystickLeft.active = true;
+                joystickLeft.startX = r.left + r.width / 2;
+                joystickLeft.startY = r.top  + r.height / 2;
+            });
+            leftEl.addEventListener('touchmove', (e) => {
+                if (!joystickLeft.active) return;
+                e.preventDefault();
+                const touch = Array.from(e.touches).find(t => t.target.closest('#joystick-left'));
+                if (!touch) return;
+                const dx = touch.clientX - joystickLeft.startX;
+                const dy = touch.clientY - joystickLeft.startY;
+                const maxD = 45, ang = Math.atan2(dy, dx), fd = Math.min(Math.hypot(dx, dy), maxD);
+                hLeft.style.transform = `translate(${Math.cos(ang)*fd}px, ${Math.sin(ang)*fd}px)`;
+                joystickLeft.vx = Math.cos(ang) * fd / maxD;
+                joystickLeft.vy = Math.sin(ang) * fd / maxD;
+            });
+            leftEl.addEventListener('touchend', () => { joystickLeft.active = false; joystickLeft.vx = 0; joystickLeft.vy = 0; hLeft.style.transform = 'translate(0,0)'; });
+
+            rightEl.addEventListener('touchstart', () => {
+                const r = rightEl.getBoundingClientRect();
+                joystickRight.active = true; joystickRight.isAiming = true;
+                joystickRight.startX = r.left + r.width / 2;
+                joystickRight.startY = r.top  + r.height / 2;
+            });
+            rightEl.addEventListener('touchmove', (e) => {
+                if (!joystickRight.active) return;
+                e.preventDefault();
+                const touch = Array.from(e.touches).find(t => t.target.closest('#joystick-right'));
+                if (!touch) return;
+                const dx = touch.clientX - joystickRight.startX;
+                const dy = touch.clientY - joystickRight.startY;
+                const maxD = 45, ang = Math.atan2(dy, dx), fd = Math.min(Math.hypot(dx, dy), maxD);
+                hRight.style.transform = `translate(${Math.cos(ang)*fd}px, ${Math.sin(ang)*fd}px)`;
+                joystickRight.vx = Math.cos(ang) * fd / maxD;
+                joystickRight.vy = Math.sin(ang) * fd / maxD;
+                if (localPlayer) localPlayer.angle = ang;
+                if (Math.hypot(dx, dy) > 15 && localPlayer) localPlayer.shoot();
+            });
+            rightEl.addEventListener('touchend', () => { joystickRight.active = false; joystickRight.vx = 0; joystickRight.vy = 0; joystickRight.isAiming = false; hRight.style.transform = 'translate(0,0)'; });
+        }
+
+        function setupDesktopControls() {
+            window.addEventListener('keydown', (e) => {
+                if (!gameActive) return;
+                const k = e.key.toLowerCase();
+                if (k === 'w' || k === 'arrowup')    keys.w = true;
+                if (k === 'a' || k === 'arrowleft')  keys.a = true;
+                if (k === 's' || k === 'arrowdown')  keys.s = true;
+                if (k === 'd' || k === 'arrowright') keys.d = true;
+                if (k === 'r') { if (localPlayer) localPlayer.reload(); }
+                if (k === 'h' || k === 'q') { if (localPlayer) localPlayer.useHeal(); }
+            });
+            window.addEventListener('keyup', (e) => {
+                const k = e.key.toLowerCase();
+                if (k === 'w' || k === 'arrowup')    keys.w = false;
+                if (k === 'a' || k === 'arrowleft')  keys.a = false;
+                if (k === 's' || k === 'arrowdown')  keys.s = false;
+                if (k === 'd' || k === 'arrowright') keys.d = false;
+            });
+            window.addEventListener('mousemove', (e) => {
+                if (!gameActive || !localPlayer) return;
+                mouseX = e.clientX; mouseY = e.clientY;
+                localPlayer.angle = Math.atan2(mouseY - canvas.height / 2, mouseX - canvas.width / 2);
+            });
+            window.addEventListener('mousedown', () => { if (gameActive) isMouseDown = true; });
+            window.addEventListener('mouseup',   () => { isMouseDown = false; });
+        }
+
+        function resize() {
+            if (!canvas) return;
+            canvas.width  = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        window.addEventListener('resize', resize);
+
+        // =============================================
+        // HERNÍ LOGIKA
+        // =============================================
+        function updateGame() {
+            if (!gameActive || !localPlayer) return;
+
+            // 1. Pohyb
+            let mx = 0, my = 0;
+            if (isMobile) {
+                mx = joystickLeft.vx * localPlayer.speed;
+                my = joystickLeft.vy * localPlayer.speed;
+            } else {
+                if (keys.w) my = -localPlayer.speed;
+                if (keys.s) my =  localPlayer.speed;
+                if (keys.a) mx = -localPlayer.speed;
+                if (keys.d) mx =  localPlayer.speed;
+                if (mx !== 0 && my !== 0) { mx *= 0.7071; my *= 0.7071; }
+            }
+
+            localPlayer.x = Math.max(localPlayer.radius, Math.min(MAP_SIZE - localPlayer.radius, localPlayer.x + mx));
+            localPlayer.y = Math.max(localPlayer.radius, Math.min(MAP_SIZE - localPlayer.radius, localPlayer.y + my));
+
+            mapObstacles.forEach(obs => {
+                if (obs.hp <= 0) return;
+                const d = Math.hypot(localPlayer.x - obs.x, localPlayer.y - obs.y);
+                const min = localPlayer.radius + obs.radius;
+                if (d < min) {
+                    const a = Math.atan2(localPlayer.y - obs.y, localPlayer.x - obs.x);
+                    localPlayer.x = obs.x + Math.cos(a) * min;
+                    localPlayer.y = obs.y + Math.sin(a) * min;
+                }
+            });
+
+            // 2. Střelba (desktop)
+            if (!isMobile && isMouseDown) localPlayer.shoot();
+
+            // 3. Projektily
+            for (let i = localBullets.length - 1; i >= 0; i--) {
+                const b = localBullets[i];
+                b.x += b.vx; b.y += b.vy;
+                b.travelled += Math.hypot(b.vx, b.vy);
+                if (b.travelled > b.range) { localBullets.splice(i, 1); continue; }
+
+                let removed = false;
+                for (const obs of mapObstacles) {
+                    if (obs.hp <= 0) continue;
+                    if (Math.hypot(b.x - obs.x, b.y - obs.y) < obs.radius) {
+                        if (obs.type === 'crate') { obs.hp -= b.damage; if (obs.hp <= 0) spawnLoot(obs.x, obs.y, obs.lootType); }
+                        localBullets.splice(i, 1); removed = true; break;
+                    }
+                }
+                if (removed) continue;
+
+                if (b.ownerId === playerId) {
+                    for (const id in activePlayers) {
+                        const enemy = activePlayers[id];
+                        if (enemy.hp <= 0) continue;
+                        if (Math.hypot(b.x - enemy.x, b.y - enemy.y) < 30) {
+                            spawnHitMarker(b.x, b.y);
+                            localBullets.splice(i, 1); removed = true; break;
+                        }
+                    }
+                } else {
+                    if (Math.hypot(b.x - localPlayer.x, b.y - localPlayer.y) < localPlayer.radius && localPlayer.hp > 0) {
+                        localPlayer.hp = Math.max(0, localPlayer.hp - b.damage);
+                        spawnHitMarker(b.x, b.y);
+                        updateUI();
+                        localBullets.splice(i, 1);
+                        if (localPlayer.hp <= 0) handleDeath(b.ownerId);
+                        break;
+                    }
+                }
+            }
+
+            // 4. Interpolace ostatních hráčů
+            for (const id in activePlayers) {
+                const e = activePlayers[id];
+                if (e.targetX !== undefined) {
+                    e.x += (e.targetX - e.x) * 0.25;
+                    e.y += (e.targetY - e.y) * 0.25;
+                    let diff = e.targetAngle - e.angle;
+                    while (diff < -Math.PI) diff += Math.PI * 2;
+                    while (diff > Math.PI)  diff -= Math.PI * 2;
+                    e.angle += diff * 0.25;
+                }
+            }
+
+            // 5. Loot pickup
+            for (let i = itemsOnGround.length - 1; i >= 0; i--) {
+                const item = itemsOnGround[i];
+                if (Math.hypot(localPlayer.x - item.x, localPlayer.y - item.y) < localPlayer.radius + 15) {
+                    if (item.type === 'medkit') {
+                        localPlayer.medkits++;
+                    } else {
+                        localPlayer.weapons[item.type] = true;
+                        localPlayer.currentWeapon = item.type;
+                        localPlayer.ammo[item.type] = WEAPONS[item.type].ammoMax;
+                    }
+                    itemsOnGround.splice(i, 1);
+                    updateUI();
+                }
+            }
+
+            // 6. Zóna damage
+            const zone = getZoneState();
+            if (Math.hypot(localPlayer.x - zone.center.x, localPlayer.y - zone.center.y) > zone.radius) {
+                localPlayer.hp = Math.max(0, localPlayer.hp - (zone.state === 'collapsing' ? 1.0 : 0.4));
+                updateUI();
+                if (localPlayer.hp <= 0) handleDeath('Zóna');
+            }
+        }
+
+        function spawnLoot(x, y, type) {
+            itemsOnGround.push({ x: x + (Math.random() - 0.5) * 30, y: y + (Math.random() - 0.5) * 30, type });
+        }
+
+        const hitMarkers = [];
+        function spawnHitMarker(x, y) { hitMarkers.push({ x, y, alpha: 1 }); }
+
+        async function handleDeath(killerId) {
+            if (!gameActive) return;
+            gameActive = false;
+            if (networkInterval) { clearInterval(networkInterval); networkInterval = null; }
+
+            let killerName = "Divoká zóna";
+            if (killerId && killerId !== 'Zóna') {
+                const enemy = activePlayers[killerId];
+                if (enemy) killerName = enemy.name;
+
+                // Zapíšeme killedBy aby killer dostal credit přes realtime
+                if (playerDocCreated) {
+                    try {
+                        await databases.updateDocument(DATABASE_ID, COLLECTION_ID, playerId, {
+                            hp: 0, killedBy: killerId, lastUpdate: Date.now()
+                        });
+                        await new Promise(r => setTimeout(r, 700)); // čas na realtime propagaci
+                    } catch (e) {}
+                }
+            }
+
+            document.getElementById('death-killer-text').innerText = `Zabil tě: ${killerName}`;
+            document.getElementById('death-stat-kills').innerText  = localPlayer.kills;
+            const elapsed = Math.floor((Date.now() - playStartTime) / 1000);
+            document.getElementById('death-stat-time').innerText   = `${Math.floor(elapsed/60)}:${String(elapsed%60).padStart(2,'0')}`;
+            document.getElementById('death-screen').style.display  = 'flex';
+            document.getElementById('game-ui').style.display       = 'none';
+
+            await removePlayerFromAppwrite();
+        }
+
+        function updateUI() {
+            if (!localPlayer) return;
+            const hpPct = (localPlayer.hp / localPlayer.maxHp) * 100;
+            document.getElementById('health-bar-fill').style.width = `${hpPct}%`;
+            document.getElementById('health-bar-text').innerText   = `${Math.ceil(localPlayer.hp)} / ${localPlayer.maxHp} HP`;
+            document.getElementById('stat-kills').innerText        = `Killy: ${localPlayer.kills}`;
+
+            const weapon = WEAPONS[localPlayer.currentWeapon];
+            document.getElementById('weapon-name').innerText      = weapon.name;
+            document.getElementById('weapon-type-icon').innerHTML = `<i class="${weapon.icon}"></i>`;
+            document.getElementById('weapon-ammo').innerText      = localPlayer.currentWeapon === 'fists' ? '∞ / ∞' : `${localPlayer.ammo[localPlayer.currentWeapon]} / ${weapon.ammoMax}`;
+
+            const hc = document.getElementById('heal-button-container');
+            hc.style.display = localPlayer.medkits > 0 ? 'block' : 'none';
+            document.getElementById('medkit-count').innerText = `${localPlayer.medkits}x`;
+        }
+
+        // =============================================
+        // RENDERING
+        // =============================================
+        function drawGame() {
+            if (!canvas || !ctx) return;
+            ctx.fillStyle = '#292524';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            if (!localPlayer) return;
+
+            const camX = localPlayer.x - canvas.width / 2;
+            const camY = localPlayer.y - canvas.height / 2;
+
+            ctx.save();
+            ctx.translate(-camX, -camY);
+
+            // Grid
+            ctx.strokeStyle = '#383330'; ctx.lineWidth = 2;
+            const gs = 100;
+            const sx = Math.floor(camX / gs) * gs, sy = Math.floor(camY / gs) * gs;
+            for (let x = Math.max(0, sx); x < Math.min(MAP_SIZE, camX + canvas.width + gs); x += gs) {
+                ctx.beginPath(); ctx.moveTo(x, Math.max(0, camY)); ctx.lineTo(x, Math.min(MAP_SIZE, camY + canvas.height)); ctx.stroke();
+            }
+            for (let y = Math.max(0, sy); y < Math.min(MAP_SIZE, camY + canvas.height + gs); y += gs) {
+                ctx.beginPath(); ctx.moveTo(Math.max(0, camX), y); ctx.lineTo(Math.min(MAP_SIZE, camX + canvas.width), y); ctx.stroke();
+            }
+            ctx.strokeStyle = '#ef4444'; ctx.lineWidth = 10;
+            ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
+            ctx.restore();
+
+            ctx.save();
+            ctx.translate(-camX, -camY);
+
+            // Loot
+            itemsOnGround.forEach(item => {
+                ctx.save(); ctx.translate(item.x, item.y);
+                ctx.fillStyle = item.type === 'medkit' ? 'rgba(16,185,129,0.3)' : 'rgba(245,158,11,0.3)';
+                ctx.beginPath(); ctx.arc(0, 0, 22, 0, Math.PI*2); ctx.fill();
+                ctx.fillStyle = item.type === 'medkit' ? '#10b981' : '#f59e0b';
+                ctx.fillRect(-12, -8, 24, 16);
+                if (item.type === 'medkit') {
+                    ctx.fillStyle = '#ffffff'; ctx.fillRect(-2,-6,4,12); ctx.fillRect(-6,-2,12,4);
+                } else {
+                    ctx.fillStyle = '#000'; ctx.font = 'bold 9px Arial'; ctx.textAlign = 'center';
+                    ctx.fillText(item.type.toUpperCase().substring(0,3), 0, 4);
+                }
+                ctx.restore();
+            });
+
+            // Překážky (bez stromů)
+            mapObstacles.forEach(obs => {
+                if (obs.hp <= 0 || obs.type === 'tree') return;
+                ctx.save(); ctx.translate(obs.x, obs.y);
+                ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(8,8,obs.radius,0,Math.PI*2); ctx.fill();
+                if (obs.type === 'rock') {
+                    ctx.fillStyle = '#57534e'; ctx.beginPath(); ctx.arc(0,0,obs.radius,0,Math.PI*2); ctx.fill();
+                    ctx.fillStyle = '#78716c'; ctx.beginPath(); ctx.arc(-8,-8,obs.radius*0.6,0,Math.PI*2); ctx.fill();
+                } else {
+                    ctx.fillStyle = '#78350f'; ctx.fillRect(-obs.radius,-obs.radius,obs.radius*2,obs.radius*2);
+                    ctx.strokeStyle = '#451a03'; ctx.lineWidth = 4; ctx.strokeRect(-obs.radius,-obs.radius,obs.radius*2,obs.radius*2);
+                    ctx.beginPath(); ctx.moveTo(-obs.radius,-obs.radius); ctx.lineTo(obs.radius,obs.radius); ctx.moveTo(obs.radius,-obs.radius); ctx.lineTo(-obs.radius,obs.radius); ctx.stroke();
+                }
+                ctx.restore();
+            });
+
+            // Projektily
+            localBullets.forEach(b => {
+                ctx.save(); ctx.translate(b.x, b.y); ctx.rotate(Math.atan2(b.vy, b.vx));
+                ctx.strokeStyle = '#f59e0b'; ctx.lineWidth = 4; ctx.beginPath(); ctx.moveTo(-15,0); ctx.lineTo(0,0); ctx.stroke();
+                ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(0,0,3,0,Math.PI*2); ctx.fill();
+                ctx.restore();
+            });
+
+            // Ostatní hráči
+            for (const id in activePlayers) {
+                const e = activePlayers[id];
+                if (e.hp <= 0) continue;
+                drawCharacter(e.x, e.y, e.angle, e.color, e.name, e.currentWeapon, e.hp);
+            }
+
+            // Lokální hráč
+            if (localPlayer.hp > 0) drawCharacter(localPlayer.x, localPlayer.y, localPlayer.angle, localPlayer.color, localPlayer.name, localPlayer.currentWeapon, localPlayer.hp);
+
+            // Stromy (vrstva nad hráči)
+            mapObstacles.forEach(obs => {
+                if (obs.type !== 'tree' || obs.hp <= 0) return;
+                const isUnder = Math.hypot(localPlayer.x - obs.x, localPlayer.y - obs.y) < obs.radius + 15;
+                ctx.save(); ctx.translate(obs.x, obs.y);
+                ctx.fillStyle = 'rgba(0,0,0,0.25)'; ctx.beginPath(); ctx.arc(15,15,obs.radius,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle = '#451a03'; ctx.beginPath(); ctx.arc(0,0,16,0,Math.PI*2); ctx.fill();
+                ctx.fillStyle = isUnder ? 'rgba(21,128,61,0.25)' : 'rgba(21,128,61,0.92)';
+                ctx.beginPath(); ctx.arc(0,0,obs.radius,0,Math.PI*2); ctx.fill();
+                ctx.strokeStyle = isUnder ? 'rgba(22,163,74,0.3)' : 'rgba(22,163,74,0.8)'; ctx.lineWidth = 6; ctx.stroke();
+                ctx.restore();
+            });
+
+            // Zóna
+            const zone = getZoneState();
+            ctx.strokeStyle = 'rgba(239,68,68,0.4)'; ctx.lineWidth = 20;
+            ctx.beginPath(); ctx.arc(zone.center.x, zone.center.y, zone.radius, 0, Math.PI*2); ctx.stroke();
+            ctx.fillStyle = 'rgba(239,68,68,0.15)';
+            ctx.beginPath(); ctx.rect(-500,-500,MAP_SIZE+1000,MAP_SIZE+1000); ctx.arc(zone.center.x, zone.center.y, zone.radius, 0, Math.PI*2, true); ctx.fill();
+
+            // Hit markery
+            hitMarkers.forEach((hm, idx) => {
+                ctx.fillStyle = `rgba(239,68,68,${hm.alpha})`; ctx.font = 'bold 20px Arial'; ctx.textAlign = 'center';
+                ctx.fillText('✖', hm.x, hm.y - (1 - hm.alpha) * 30);
+                hm.alpha -= 0.04; if (hm.alpha <= 0) hitMarkers.splice(idx, 1);
+            });
+
+            ctx.restore();
+            drawMinimap(zone);
+
+            document.getElementById('zone-alert').innerText = zone.statusText;
+            document.getElementById('zone-timer').innerText = zone.timerText;
+            document.getElementById('zone-alert').className = (zone.state === 'collapsing' || zone.state === 'shrinking')
+                ? "text-[10px] uppercase font-extrabold tracking-widest text-rose-500 animate-pulse"
+                : "text-[10px] uppercase font-extrabold tracking-widest text-emerald-400";
+        }
+
+        function drawCharacter(x, y, angle, color, name, activeWeapon, hp) {
+            ctx.save(); ctx.translate(x, y);
+            ctx.fillStyle = 'rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.arc(5,5,26,0,Math.PI*2); ctx.fill();
+            ctx.rotate(angle);
+            if (activeWeapon !== 'fists') {
+                ctx.fillStyle = '#292524';
+                let blen = 24;
+                if (activeWeapon === 'rifle')  blen = 36;
+                if (activeWeapon === 'sniper') blen = 44;
+                if (activeWeapon === 'smg')    blen = 22;
+                ctx.fillRect(15,-4,blen,8); ctx.fillStyle = '#78350f'; ctx.fillRect(8,-5,12,10);
+            }
+            ctx.fillStyle = '#f59e0b'; ctx.strokeStyle = '#000'; ctx.lineWidth = 3.5;
+            if (activeWeapon === 'fists') {
+                ctx.beginPath(); ctx.arc(18,-16,8,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.arc(18, 16,8,0,Math.PI*2); ctx.fill(); ctx.stroke();
+            } else {
+                ctx.beginPath(); ctx.arc(20,-7,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
+                ctx.beginPath(); ctx.arc(32, 5,7,0,Math.PI*2); ctx.fill(); ctx.stroke();
+            }
+            ctx.fillStyle = color; ctx.strokeStyle = '#1e293b'; ctx.lineWidth = 4;
+            ctx.beginPath(); ctx.arc(0,0,24,0,Math.PI*2); ctx.fill(); ctx.stroke();
+            ctx.fillStyle = 'rgba(0,0,0,0.15)'; ctx.beginPath(); ctx.arc(-10,0,14,-Math.PI/2,Math.PI/2,true); ctx.fill();
+            ctx.rotate(-angle);
+            ctx.fillStyle = '#fff'; ctx.font = 'bold 13px system-ui,sans-serif'; ctx.textAlign = 'center';
+            ctx.shadowColor = 'black'; ctx.shadowBlur = 4; ctx.fillText(name, 0, -38);
+            if (hp < 100) {
+                const bw = 40;
+                ctx.fillStyle = 'rgba(0,0,0,0.5)'; ctx.fillRect(-bw/2,-54,bw,5);
+                ctx.fillStyle = '#10b981'; ctx.fillRect(-bw/2,-54,bw*(hp/100),5);
+            }
+            ctx.shadowBlur = 0; ctx.restore();
+        }
+
+        function drawMinimap(zone) {
+            if (!minimapCanvas || !mctx) return;
+            const size = minimapCanvas.width, scale = size / MAP_SIZE;
+            mctx.fillStyle = 'rgba(41,37,30,0.85)'; mctx.fillRect(0,0,size,size);
+            mctx.strokeStyle = 'rgba(239,68,68,0.5)'; mctx.lineWidth = 1.5;
+            mctx.beginPath(); mctx.arc(zone.center.x*scale, zone.center.y*scale, zone.radius*scale, 0, Math.PI*2); mctx.stroke();
+            mapObstacles.forEach(obs => {
+                if (obs.hp <= 0) return;
+                mctx.fillStyle = obs.type === 'tree' ? '#15803d' : '#57534e';
+                mctx.fillRect(obs.x*scale, obs.y*scale, 2, 2);
+            });
+            for (const id in activePlayers) {
+                const e = activePlayers[id]; if (e.hp <= 0) continue;
+                mctx.fillStyle = '#f43f5e'; mctx.beginPath(); mctx.arc(e.x*scale, e.y*scale, 3, 0, Math.PI*2); mctx.fill();
+            }
+            mctx.fillStyle = '#eab308'; mctx.beginPath(); mctx.arc(localPlayer.x*scale, localPlayer.y*scale, 4, 0, Math.PI*2); mctx.fill();
+        }
+
+        function mainLoop() {
+            updateGame();
+            drawGame();
+            requestAnimationFrame(mainLoop);
+        }
+
+        // =============================================
+        // START
+        // =============================================
+        window.onload = function() {
+            canvas         = document.getElementById('game-canvas');
+            ctx            = canvas.getContext('2d');
+            minimapCanvas  = document.getElementById('minimap-canvas');
+            mctx           = minimapCanvas.getContext('2d');
+            resize();
+            initAppwriteAndJoin();
+            requestAnimationFrame(mainLoop);
+        };
+    </script>
+</body>
+</html>
