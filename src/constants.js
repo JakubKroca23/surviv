@@ -18,4 +18,6 @@ export const WEAPONS = {
     smg:    { name: 'Samopal Vector',      damage: 14, cooldown: 80,   speed: 22, spread: 0.12, count: 1, range: 500,  icon: 'fa-solid fa-fire',          ammoMax: 33, reloadTime: 1400 },
     rifle:  { name: 'Puška AK-47',         damage: 30, cooldown: 150,  speed: 25, spread: 0.08, count: 1, range: 800,  icon: 'fa-solid fa-person-rifle',  ammoMax: 30, reloadTime: 1500 },
     sniper: { name: 'Odstřelovačka AWM',  damage: 70, cooldown: 1500, speed: 32, spread: 0.01, count: 1, range: 1200, icon: 'fa-solid fa-crosshairs',    ammoMax: 5,  reloadTime: 2200 },
+    m4a1:   { name: 'Neon M4A1',          damage: 18, cooldown: 110,  speed: 25, spread: 0.04, count: 1, range: 680,  icon: 'fa-solid fa-person-rifle',  ammoMax: 30, reloadTime: 1400 },
+    ak47:   { name: 'Neon AK-47',          damage: 24, cooldown: 140,  speed: 23, spread: 0.09, count: 1, range: 640,  icon: 'fa-solid fa-person-rifle',  ammoMax: 30, reloadTime: 1600 },
 };

@@ -59,7 +59,7 @@ export function generateObstacles() {
                 hp:      type === 'crate' ? 100 : 1000,
                 maxHp:   type === 'crate' ? 100 : 1000,
                 color:   type === 'tree' ? '#15803d' : (type === 'rock' ? '#78716c' : '#b45309'),
-                lootType: random() < 0.25 ? 'pistol' : (random() < 0.45 ? 'smg' : (random() < 0.65 ? 'rifle' : (random() < 0.85 ? 'shotgun' : (random() < 0.93 ? 'sniper' : 'medkit')))),
+                lootType: random() < 0.2 ? 'pistol' : (random() < 0.35 ? 'smg' : (random() < 0.5 ? 'rifle' : (random() < 0.62 ? 'shotgun' : (random() < 0.72 ? 'sniper' : (random() < 0.8 ? 'm4a1' : (random() < 0.88 ? 'ak47' : (random() < 0.94 ? 'medkit' : 'grenade'))))))),
             });
         }
     }
@@ -70,9 +70,9 @@ export function generateSpawnedLoot() {
     const list = [];
     let seed = 999;
     const random = () => { const x = Math.sin(seed++) * 10000; return x - Math.floor(x); };
-    const types  = ['pistol', 'shotgun', 'smg', 'rifle', 'sniper', 'medkit'];
+    const types  = ['pistol', 'shotgun', 'smg', 'rifle', 'sniper', 'medkit', 'm4a1', 'ak47', 'grenade', 'meth', 'scope_3x', 'scope_4x', 'scope_8x'];
 
-    for (let i = 0; i < 45; i++) {
+    for (let i = 0; i < 60; i++) { // increased spawn count to 60 to accommodate more types
         list.push({
             x:    random() * (MAP_SIZE - 200) + 100,
             y:    random() * (MAP_SIZE - 200) + 100,
@@ -220,6 +220,8 @@ export class Player {
             smg:    WEAPONS.smg.ammoMax,
             rifle:  WEAPONS.rifle.ammoMax,
             sniper: WEAPONS.sniper.ammoMax,
+            m4a1:   WEAPONS.m4a1.ammoMax,
+            ak47:   WEAPONS.ak47.ammoMax,
         };
         this.medkits       = 1;
         this.lastShotTime  = 0;

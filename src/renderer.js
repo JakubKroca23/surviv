@@ -42,12 +42,13 @@ export function drawGame() {
     if (canvas.width !== cw) canvas.width = cw;
     if (canvas.height !== ch) canvas.height = ch;
 
-    const cx = cw / 2 - p.x + (state.screenShake ? state.screenShake.x : 0);
-    const cy = ch / 2 - p.y + (state.screenShake ? state.screenShake.y : 0);
+    const scale = state.viewportScale || 1.0;
 
     ctx.clearRect(0, 0, cw, ch);
     ctx.save();
-    ctx.translate(cx, cy);
+    ctx.translate(cw / 2, ch / 2);
+    ctx.scale(scale, scale);
+    ctx.translate(-p.x + (state.screenShake ? state.screenShake.x : 0), -p.y + (state.screenShake ? state.screenShake.y : 0));
 
     // 1. Podlaha
     drawGround(ctx);
@@ -589,6 +590,59 @@ function drawLoot(ctx) {
                 ctx.fillStyle = '#020617';
                 ctx.fillRect(-2, -1.5, 20, 2.8);  // extra long heavy barrel
                 ctx.fillRect(-4, -6.5, 6, 3.2);   // scope
+            } else if (item.type === 'm4a1') {
+                ctx.fillStyle = '#06b6d4'; // Cyan neon
+                ctx.fillRect(-11, -3, 5, 5.5); // stock
+                ctx.fillStyle = '#0891b2';
+                ctx.fillRect(-6, -2.2, 12, 4.2); // frame
+                ctx.fillStyle = '#22d3ee';
+                ctx.fillRect(6, -1, 9, 1.8); // barrel
+                ctx.fillStyle = '#0891b2';
+                ctx.fillRect(-1, 0, 3.2, 7.5); // straight magazine
+            } else if (item.type === 'ak47') {
+                ctx.fillStyle = '#f97316'; // Orange neon
+                ctx.fillRect(-12, -3.2, 6, 5.5); // stock
+                ctx.fillStyle = '#ea580c';
+                ctx.fillRect(-6, -2.5, 11, 4.8); // frame
+                ctx.fillStyle = '#fdba74';
+                ctx.fillRect(5, -1.2, 10, 2); // barrel
+                ctx.fillStyle = '#ea580c';
+                ctx.fillRect(-2, 0, 3.2, 8); // curved magazine
+            } else if (item.type === 'grenade') {
+                ctx.fillStyle = '#15803d'; // Dark green
+                ctx.beginPath();
+                ctx.arc(0, 1, 5, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#94a3b8';
+                ctx.fillRect(-2.5, -4.5, 5, 1.8);
+                ctx.fillStyle = (now % 600 < 300) ? '#ef4444' : '#15803d';
+                ctx.beginPath();
+                ctx.arc(0, 1, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+            } else if (item.type === 'meth') {
+                ctx.fillStyle = '#a855f7'; // Purple stim
+                ctx.fillRect(-3, -7, 6, 12);
+                ctx.fillStyle = '#c084fc';
+                ctx.fillRect(-1.5, -9, 3, 2);
+                ctx.fillStyle = '#ffffff';
+                ctx.fillRect(-0.8, 5, 1.6, 4);
+            } else if (item.type && item.type.startsWith('scope_')) {
+                const power = item.type.split('_')[1] || '3x';
+                ctx.strokeStyle = '#3b82f6';
+                ctx.lineWidth = 1.8;
+                ctx.beginPath();
+                ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.strokeStyle = 'rgba(59, 130, 246, 0.5)';
+                ctx.lineWidth = 0.8;
+                ctx.beginPath();
+                ctx.moveTo(-7.5, 0); ctx.lineTo(7.5, 0);
+                ctx.moveTo(0, -7.5); ctx.lineTo(0, 7.5);
+                ctx.stroke();
+                ctx.fillStyle = '#ffffff';
+                ctx.font = '900 6.5px Segoe UI';
+                ctx.textAlign = 'center';
+                ctx.fillText(power, 0, 2.2);
             }
         }
         ctx.restore();
@@ -1185,6 +1239,26 @@ export function drawCharacter(ctx, player, isLocal) {
             ctx.fillStyle = '#1e293b';
             ctx.fillRect(radius * 0.45, -9, radius * 0.55, 3.5);
             gunTipX = radius * 1.97;
+        } else if (currentWeapon === 'm4a1') {
+            ctx.fillStyle = '#0891b2'; // Cyan frame
+            ctx.fillRect(radius * 0.25, -4, radius * 0.75, 8);
+            ctx.fillStyle = '#06b6d4'; // Glowing barrel
+            ctx.fillRect(radius * 1.0, -2, radius * 0.55, 4);
+            ctx.fillStyle = '#22d3ee';
+            ctx.fillRect(radius * 0.45, 0, radius * 0.15, 7); // straight mag
+            gunTipX = radius * 1.55;
+        } else if (currentWeapon === 'ak47') {
+            ctx.fillStyle = '#ea580c'; // Orange stock/frame
+            ctx.fillRect(radius * 0.2, -4.2, radius * 0.8, 8.4);
+            ctx.fillStyle = '#f97316'; // Glowing barrel
+            ctx.fillRect(radius * 1.0, -2.2, radius * 0.6, 4.4);
+            // Curved mag
+            ctx.strokeStyle = '#c2410c';
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.arc(radius * 0.6, 4.5, radius * 0.35, 0, Math.PI / 2);
+            ctx.stroke();
+            gunTipX = radius * 1.6;
         } else {
             ctx.fillStyle = '#1c1917';
             ctx.strokeStyle = '#44403c';
@@ -1212,6 +1286,24 @@ export function drawCharacter(ctx, player, isLocal) {
             }
             ctx.closePath();
             ctx.fill();
+        }
+
+        // Draw 3x Scope Laser Aim line
+        if (player.id === state.playerId && state.currentScope === 'scope_3x' && !player.isDead) {
+            ctx.save();
+            ctx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+            ctx.lineWidth = 3.5;
+            ctx.beginPath();
+            ctx.moveTo(gunTipX, 0);
+            ctx.lineTo(gunTipX + 700, 0);
+            ctx.stroke();
+
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 1.0;
+            ctx.beginPath();
+            ctx.moveTo(gunTipX, 0);
+            ctx.lineTo(gunTipX + 700, 0);
+            ctx.stroke();
             ctx.restore();
         }
     }

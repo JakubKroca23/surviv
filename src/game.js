@@ -584,6 +584,16 @@ export function updateGame() {
             playSound('pickup');
             if (item.type === 'medkit') {
                 p.medkits++;
+            } else if (item.type === 'grenade') {
+                p.grenades = (p.grenades || 0) + 1;
+            } else if (item.type === 'meth') {
+                p.meth = (p.meth || 0) + 1;
+            } else if (item.type && item.type.startsWith('scope_')) {
+                state.currentScope = item.type;
+                const power = item.type.split('_')[1];
+                if (power === '3x') state.viewportScale = 0.75;
+                else if (power === '4x') state.viewportScale = 0.60;
+                else if (power === '8x') state.viewportScale = 0.40;
             } else {
                 p.weapons[item.type] = true;
                 p.currentWeapon = item.type;
