@@ -15,6 +15,33 @@ export function updateGame() {
     const p = state.localPlayer;
     const nowTime = Date.now();
 
+    // Update screen shake
+    if (state.screenShake && state.screenShake.intensity > 0.2) {
+        state.screenShake.x = (Math.random() - 0.5) * state.screenShake.intensity;
+        state.screenShake.y = (Math.random() - 0.5) * state.screenShake.intensity;
+        state.screenShake.intensity *= state.screenShake.decay;
+    } else if (state.screenShake) {
+        state.screenShake.x = 0;
+        state.screenShake.y = 0;
+        state.screenShake.intensity = 0;
+    }
+
+    // Update particles
+    if (state.particles) {
+        for (let i = state.particles.length - 1; i >= 0; i--) {
+            const pt = state.particles[i];
+            pt.x += pt.vx;
+            pt.y += pt.vy;
+            pt.vx *= pt.friction;
+            pt.vy *= pt.friction;
+            pt.alpha -= pt.decay;
+            pt.angle += pt.spin;
+            if (pt.alpha <= 0) {
+                state.particles.splice(i, 1);
+            }
+        }
+    }
+
     // MOBA Init
     if (state.rpgMode && (!state.mobaStructures || state.mobaStructures.length === 0)) {
         state.mobaStructures = [
@@ -359,6 +386,11 @@ export function updateGame() {
         b.y += b.vy;
         b.travelled += Math.hypot(b.vx, b.vy);
 
+        // Spawn bullet trails
+        if (Math.random() < 0.6) {
+            spawnParticles(b.x, b.y, 1, 'trail', b.color || 'rgba(251, 191, 36, 0.45)', { speed: 0.1, radius: 1.5, decay: 0.08 });
+        }
+
         if (b.travelled > b.range) { state.localBullets.splice(i, 1); continue; }
 
         let removed = false;
@@ -369,7 +401,18 @@ export function updateGame() {
             if (Math.hypot(b.x - obs.x, b.y - obs.y) < obs.radius) {
                 if (obs.type === 'crate') {
                     obs.hp -= b.damage;
-                    if (obs.hp <= 0) spawnLoot(obs.x, obs.y, obs.lootType);
+                    spawnParticles(b.x, b.y, 8, 'debris', '#b45309', { speed: 2.5, friction: 0.94 });
+                    triggerScreenShake(2.5);
+                    if (obs.hp <= 0) {
+                        spawnLoot(obs.x, obs.y, obs.lootType);
+                        spawnParticles(obs.x, obs.y, 16, 'debris', '#78350f', { speed: 3.5 });
+                    }
+                } else if (obs.type === 'tree') {
+                    spawnParticles(b.x, b.y, 6, 'debris', '#15803d', { speed: 2.0, radius: 3.5 });
+                    triggerScreenShake(1.5);
+                } else if (obs.type === 'rock') {
+                    spawnParticles(b.x, b.y, 8, 'spark', '#a8a29e', { speed: 4.0, decay: 0.05 });
+                    triggerScreenShake(2.0);
                 }
                 state.localBullets.splice(i, 1);
                 removed = true;
@@ -512,6 +555,7 @@ export function updateGame() {
 
                 p.hp = Math.max(0, p.hp - b.damage);
                 spawnHitMarker(b.x, b.y);
+                triggerScreenShake(4.0);
                 playSound('hit');
                 updateUI();
                 state.localBullets.splice(i, 1);
@@ -583,6 +627,44 @@ export function updateGame() {
 // =============================================
 // POMOCNÉ FUNKCE
 // =============================================
+
+export function spawnParticles(x, y, count, type, color = '#fbbf24', customConfig = {}) {
+    if (!state.particles) state.particles = [];
+    
+    // Hard ceiling cap
+    if (state.particles.length > 250) {
+        state.particles.splice(0, state.particles.length - 250);
+    }
+
+    for (let i = 0; i < count; i++) {
+        const angle = customConfig.angle !== undefined ? customConfig.angle + (Math.random() - 0.5) * (customConfig.spread || 0.4) : Math.random() * Math.PI * 2;
+        const speed = customConfig.speed !== undefined ? customConfig.speed * (0.5 + Math.random() * 0.8) : 1.5 + Math.random() * 3.5;
+        
+        state.particles.push({
+            x,
+            y,
+            vx: Math.cos(angle) * speed,
+            vy: Math.sin(angle) * speed,
+            color,
+            radius: customConfig.radius !== undefined ? customConfig.radius * (0.6 + Math.random() * 0.8) : 2.5 + Math.random() * 3.5,
+            alpha: 1.0,
+            decay: customConfig.decay !== undefined ? customConfig.decay * (0.8 + Math.random() * 0.4) : 0.03 + Math.random() * 0.03,
+            type, // 'spark', 'debris', 'trail'
+            life: customConfig.life !== undefined ? customConfig.life : 1.0,
+            friction: customConfig.friction !== undefined ? customConfig.friction : 1.0,
+            angle: Math.random() * Math.PI * 2,
+            spin: (Math.random() - 0.5) * 0.2
+        });
+    }
+}
+
+export function triggerScreenShake(intensity) {
+    if (!state.screenShake) state.screenShake = { x: 0, y: 0, intensity: 0, decay: 0.88 };
+    state.screenShake.intensity = Math.max(state.screenShake.intensity, intensity);
+}
+
+state.spawnParticles = spawnParticles;
+state.triggerScreenShake = triggerScreenShake;
 
 export function spawnLoot(x, y, type) {
     state.itemsOnGround.push({

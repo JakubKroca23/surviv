@@ -42,8 +42,8 @@ export function drawGame() {
     if (canvas.width !== cw) canvas.width = cw;
     if (canvas.height !== ch) canvas.height = ch;
 
-    const cx = cw / 2 - p.x;
-    const cy = ch / 2 - p.y;
+    const cx = cw / 2 - p.x + (state.screenShake ? state.screenShake.x : 0);
+    const cy = ch / 2 - p.y + (state.screenShake ? state.screenShake.y : 0);
 
     ctx.clearRect(0, 0, cw, ch);
     ctx.save();
@@ -54,6 +54,9 @@ export function drawGame() {
 
     // 2. Zóna
     drawZone(ctx);
+
+    // 2.5 Částice
+    drawParticles(ctx);
 
     // 3. Statické překážky kromě korun stromů (kmeny stromů, skály, krabice)
     drawTrunksAndRocks(ctx);
@@ -222,6 +225,39 @@ function drawZone(ctx) {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
+}
+
+// =============================================
+// ČÁSTICE NEONU
+// =============================================
+
+function drawParticles(ctx) {
+    if (!state.particles) return;
+    state.particles.forEach(pt => {
+        ctx.save();
+        ctx.globalAlpha = pt.alpha;
+        
+        if (pt.type === 'spark') {
+            ctx.fillStyle = pt.color;
+            ctx.shadowColor = pt.color;
+            ctx.shadowBlur = 6;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI * 2);
+            ctx.fill();
+        } else if (pt.type === 'debris') {
+            ctx.translate(pt.x, pt.y);
+            ctx.rotate(pt.angle);
+            ctx.fillStyle = pt.color;
+            ctx.fillRect(-pt.radius, -pt.radius / 2, pt.radius * 2, pt.radius);
+        } else if (pt.type === 'trail') {
+            ctx.fillStyle = pt.color;
+            ctx.beginPath();
+            ctx.arc(pt.x, pt.y, pt.radius, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        
+        ctx.restore();
+    });
 }
 
 // =============================================

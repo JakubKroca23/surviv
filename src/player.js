@@ -487,6 +487,7 @@ export class Player {
                 // Warrior melee slash swing sword
                 if (now - this.lastShotTime < 450) return;
                 this.lastShotTime = now;
+                if (state.triggerScreenShake) state.triggerScreenShake(2.0);
                 playSound('punch');
                 
                 // Visual swipe effect
@@ -536,6 +537,17 @@ export class Player {
                 // Mage fireball ranged attack
                 if (now - this.lastShotTime < 800) return;
                 this.lastShotTime = now;
+                if (state.spawnParticles) {
+                    state.spawnParticles(
+                        this.x + Math.cos(this.angle) * (this.radius + 15),
+                        this.y + Math.sin(this.angle) * (this.radius + 15),
+                        6,
+                        'spark',
+                        '#f97316',
+                        { angle: this.angle, spread: 0.4, speed: 4.5 }
+                    );
+                }
+                if (state.triggerScreenShake) state.triggerScreenShake(2.5);
                 playSound('shoot_rifle');
                 
                 state.localBullets.push({
@@ -556,6 +568,17 @@ export class Player {
                 // Ranger precision bow shot arrow
                 if (now - this.lastShotTime < 600) return;
                 this.lastShotTime = now;
+                if (state.spawnParticles) {
+                    state.spawnParticles(
+                        this.x + Math.cos(this.angle) * (this.radius + 15),
+                        this.y + Math.sin(this.angle) * (this.radius + 15),
+                        5,
+                        'spark',
+                        '#60a5fa',
+                        { angle: this.angle, spread: 0.35, speed: 4.0 }
+                    );
+                }
+                if (state.triggerScreenShake) state.triggerScreenShake(1.5);
                 playSound('shoot_pistol');
                 
                 state.localBullets.push({
@@ -576,6 +599,17 @@ export class Player {
                 // Priest holy beam attack
                 if (now - this.lastShotTime < 500) return;
                 this.lastShotTime = now;
+                if (state.spawnParticles) {
+                    state.spawnParticles(
+                        this.x + Math.cos(this.angle) * (this.radius + 15),
+                        this.y + Math.sin(this.angle) * (this.radius + 15),
+                        5,
+                        'spark',
+                        '#fbbf24',
+                        { angle: this.angle, spread: 0.38, speed: 4.2 }
+                    );
+                }
+                if (state.triggerScreenShake) state.triggerScreenShake(1.8);
                 playSound('shoot_smg');
                 
                 state.localBullets.push({
@@ -609,6 +643,24 @@ export class Player {
             playSound('punch');
         }
         this.lastShotTime = now;
+
+        // Muzzle Flash sparks & screen shake
+        if (this.currentWeapon !== 'fists') {
+            if (state.spawnParticles) {
+                state.spawnParticles(
+                    this.x + Math.cos(this.angle) * (this.radius + 15),
+                    this.y + Math.sin(this.angle) * (this.radius + 15),
+                    6,
+                    'spark',
+                    '#fbbf24',
+                    { angle: this.angle, spread: 0.5, speed: 4.5, decay: 0.05 }
+                );
+            }
+            if (state.triggerScreenShake) {
+                const weaponShake = this.currentWeapon === 'sniper' ? 5.5 : (this.currentWeapon === 'shotgun' ? 4.5 : (this.currentWeapon === 'rifle' ? 2.5 : 1.5));
+                state.triggerScreenShake(weaponShake);
+            }
+        }
 
         for (let i = 0; i < weapon.count; i++) {
             const dev = (Math.random() - 0.5) * weapon.spread;
