@@ -19,67 +19,138 @@ export function updateUI() {
 
     const hpPct = (p.hp / p.maxHp) * 100;
     if (lastUIPct !== hpPct) {
-        const hpFill = document.getElementById('health-bar-fill');
-        const hpText = document.getElementById('health-bar-text');
-        if (hpFill) hpFill.style.width = `${hpPct}%`;
-        if (hpText) hpText.textContent  = `${Math.ceil(p.hp)} / ${p.maxHp} HP`;
+        document.getElementById('health-bar-fill').style.width = `${hpPct}%`;
+        document.getElementById('health-bar-text').textContent  = `${Math.ceil(p.hp)} / ${p.maxHp} HP`;
         lastUIPct = hpPct;
     }
 
     if (lastUIKills !== p.kills) {
-        const killsEl = document.getElementById('stat-kills');
-        if (killsEl) killsEl.textContent = `Killy: ${p.kills}`;
+        document.getElementById('stat-kills').textContent = `Killy: ${p.kills}`;
         lastUIKills = p.kills;
     }
 
-    const weapon = WEAPONS[p.currentWeapon];
-    if (weapon) {
+    if (state.rpgMode) {
+        const spellsWrap = document.getElementById('rpg-spells-wrap');
+        const xpWrap = document.getElementById('xp-bar-wrap');
+        const weaponPanel = document.getElementById('weapon-panel');
+        if (spellsWrap) spellsWrap.style.display = 'flex';
+        if (xpWrap) xpWrap.style.display = 'block';
+        if (weaponPanel) weaponPanel.style.display = 'none';
+
+        const qIcons = ['fa-wind', 'fa-snowflake', 'fa-arrow-up-from-bracket', 'fa-heart'];
+        const eIcons = ['fa-angles-down', 'fa-meteor', 'fa-bomb', 'fa-shield-halved'];
+        const qIconEl = document.getElementById('spell-q-icon');
+        const eIconEl = document.getElementById('spell-e-icon');
+        
+        if (qIconEl) qIconEl.className = `fa-solid ${qIcons[p.classIndex] || 'fa-wind'}`;
+        if (eIconEl) eIconEl.className = `fa-solid ${eIcons[p.classIndex] || 'fa-meteor'}`;
+
+        const now = Date.now();
+        const qCooldowns = [6000, 8000, 5000, 8000];
+        const eCooldowns = [12000, 14000, 10000, 15000];
+        const qMax = qCooldowns[p.classIndex] || 5000;
+        const eMax = eCooldowns[p.classIndex] || 10000;
+        const qElapsed = now - (p.qLastUsed || 0);
+        const eElapsed = now - (p.eLastUsed || 0);
+        const qRem = Math.max(0, Math.ceil((qMax - qElapsed) / 1000));
+        const eRem = Math.max(0, Math.ceil((eMax - eElapsed) / 1000));
+
+        const qCooldownEl = document.getElementById('spell-q-cooldown');
+        const eCooldownEl = document.getElementById('spell-e-cooldown');
+        if (qCooldownEl) {
+            if (qRem > 0) {
+                qCooldownEl.style.display = 'flex';
+                qCooldownEl.textContent = qRem;
+            } else {
+                qCooldownEl.style.display = 'none';
+            }
+        }
+        if (eCooldownEl) {
+            if (eRem > 0) {
+                eCooldownEl.style.display = 'flex';
+                eCooldownEl.textContent = eRem;
+            } else {
+                eCooldownEl.style.display = 'none';
+            }
+        }
+
+        const xpPct = (p.xp / p.maxXp) * 100;
+        const xpFill = document.getElementById('xp-bar-fill');
+        const xpText = document.getElementById('xp-text');
+        if (xpFill) xpFill.style.width = `${xpPct}%`;
+        if (xpText) xpText.textContent = `LEVEL ${p.level} (${Math.round(p.xp)} / ${p.maxXp} XP)`;
+
+        // Update MOBA Gold & Shop HUD
+        const mobaShopHud = document.getElementById('moba-shop-hud');
+        if (mobaShopHud) mobaShopHud.style.display = 'flex';
+        
+        const statGold = document.getElementById('stat-gold');
+        if (statGold) statGold.textContent = `${p.gold} G`;
+
+        const fx = p.teamId === 1 ? 300 : 3700;
+        const fy = p.teamId === 1 ? 3700 : 300;
+        const inFountain = Math.hypot(p.x - fx, p.y - fy) < 260;
+        const btnOpenShop = document.getElementById('btn-open-shop');
+        if (btnOpenShop) {
+            btnOpenShop.style.display = inFountain ? 'block' : 'none';
+        }
+        
+        // Hide shop modal if walked away
+        if (!inFountain) {
+            const modal = document.getElementById('shop-modal');
+            if (modal && modal.style.display === 'flex') {
+                modal.style.display = 'none';
+            }
+        }
+
+        // Update MOBA Inventory HUD
+        const mobaInventoryHud = document.getElementById('moba-inventory-hud');
+        if (mobaInventoryHud) {
+            mobaInventoryHud.style.display = 'flex';
+            
+            const itemMap = {
+                ie: { name: 'Infinity Edge', icon: 'fa-sword', color: '#ef4444' },
+                dc: { name: 'Rabadon\'s Deathcap', icon: 'fa-hat-wizard', color: '#a855f7' },
+                warmog: { name: 'Warmog\'s Armor', icon: 'fa-shield-heart', color: '#22c55e' },
+                boots: { name: 'Boots of Swiftness', icon: 'fa-boot', color: '#3b82f6' }
+            };
+
+            let invHtml = '';
+            p.items.forEach(itemId => {
+                const item = itemMap[itemId];
+                if (item) {
+                    invHtml += `<div style="width: 2.2rem; height: 2.2rem; background: rgba(0,0,0,0.85); border: 2px solid ${item.color}; border-radius: 0.375rem; display: flex; align-items: center; justify-content: center; color: ${item.color}; font-size: 0.95rem; box-shadow: 0 0 5px ${item.color}40;" title="${item.name}"><i class="fa-solid ${item.icon}"></i></div>`;
+                }
+            });
+            mobaInventoryHud.innerHTML = invHtml;
+        }
+
+    } else {
+        const spellsWrap = document.getElementById('rpg-spells-wrap');
+        const xpWrap = document.getElementById('xp-bar-wrap');
+        const weaponPanel = document.getElementById('weapon-panel');
+        const mobaShopHud = document.getElementById('moba-shop-hud');
+        const mobaInventoryHud = document.getElementById('moba-inventory-hud');
+        
+        if (spellsWrap) spellsWrap.style.display = 'none';
+        if (xpWrap) xpWrap.style.display = 'none';
+        if (weaponPanel) weaponPanel.style.display = 'block';
+        if (mobaShopHud) mobaShopHud.style.display = 'none';
+        if (mobaInventoryHud) mobaInventoryHud.style.display = 'none';
+
+        const weapon = WEAPONS[p.currentWeapon];
         if (lastUIWeapon !== p.currentWeapon) {
-            const nameEl = document.getElementById('weapon-name');
-            const iconEl = document.getElementById('weapon-icon');
-            if (nameEl) nameEl.textContent = weapon.name;
-            if (iconEl) iconEl.innerHTML   = `<i class="${weapon.icon}"></i>`;
+            document.getElementById('weapon-name').textContent = weapon.name;
+            document.getElementById('weapon-icon').innerHTML   = `<i class="${weapon.icon}"></i>`;
             lastUIWeapon = p.currentWeapon;
         }
 
         const currentAmmoText = p.currentWeapon === 'fists' ? '∞ / ∞' : `${p.ammo[p.currentWeapon]} / ${weapon.ammoMax}`;
         if (lastUIAmmo !== currentAmmoText) {
-            const ammoEl = document.getElementById('weapon-ammo');
-            if (ammoEl) ammoEl.textContent = currentAmmoText;
+            document.getElementById('weapon-ammo').textContent = currentAmmoText;
             lastUIAmmo = currentAmmoText;
         }
     }
-
-    if (lastUIMedkits !== p.medkits) {
-        const healWrap = document.getElementById('heal-btn-wrap');
-        if (healWrap) {
-            healWrap.style.display = p.medkits > 0 ? '' : 'none';
-            const countEl = document.getElementById('medkit-count');
-            if (countEl) countEl.textContent = `${p.medkits}x`;
-        }
-        lastUIMedkits = p.medkits;
-    }
-
-    if (lastUIGrenades !== p.grenades) {
-        const grenadeWrap = document.getElementById('grenade-btn-wrap');
-        if (grenadeWrap) {
-            grenadeWrap.style.display = p.grenades > 0 ? '' : 'none';
-            const countEl = document.getElementById('grenade-count');
-            if (countEl) countEl.textContent = `${p.grenades}x`;
-        }
-        lastUIGrenades = p.grenades;
-    }
-
-    if (lastUIMeth !== p.meth) {
-        const methWrap = document.getElementById('meth-btn-wrap');
-        if (methWrap) {
-            methWrap.style.display = p.meth > 0 ? '' : 'none';
-            const countEl = document.getElementById('meth-count');
-            if (countEl) countEl.textContent = `${p.meth}x`;
-        }
-        lastUIMeth = p.meth;
-    }
-}
 
     if (lastUIMedkits !== p.medkits) {
         const healWrap = document.getElementById('heal-btn-wrap');
