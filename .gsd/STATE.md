@@ -1,5 +1,5 @@
 ---
-updated: 2026-05-27T03:49:30+02:00
+updated: 2026-05-27T03:52:00+02:00
 ---
 
 # Project State
@@ -9,17 +9,16 @@ updated: 2026-05-27T03:49:30+02:00
 **Milestone:** v1.0
 **Phase:** 1 - Foundation & Neon Visual Engine
 **Status:** planning
-**Plan:** Design and execute the implementation plan for Phase 1 (visual engine overhaul, neon styling, particles system, and Vite module fixes).
+**Plan:** Plans 1.1 and 1.2 created, verified, and ready for execution.
 
 ## Last Action
 
-Initialized `.gsd` project directory, finalized SPEC.md, REQUIREMENTS.md, and ROADMAP.md based on user specifications.
+Created execution plans `1-PLAN.md` (decoupling ESM models, double-stroke neon system, and grid pattern caching) and `2-PLAN.md` (neon particles system, splatters, debris, and screenshake mechanics).
 
 ## Next Steps
 
-1. Run `/plan 1` to create the detailed technical execution plan for Phase 1.
-2. Fix module loading issue (`require` reference in `player.js`).
-3. Refactor the canvas renderer to utilize glowing neon visuals and grid textures.
+1. Run `/execute 1` to start Phase 1.
+2. Verify all visual and compilation success criteria are met.
 
 ## Active Decisions
 
@@ -29,6 +28,8 @@ Initialized `.gsd` project directory, finalized SPEC.md, REQUIREMENTS.md, and RO
 | Viewport Zoom | Camera Scaling in Renderer | 2026-05-27 | Scopes & Viewport scaling |
 | Stimulant | High-risk/reward Consumable | 2026-05-27 | Gameplay balance |
 | Drivable Car | Dynamic vehicle controls & collisions | 2026-05-27 | Vehicles mechanics |
+| Neon Visuals | Option B (Double-Stroke Neon Emulation) | 2026-05-27 | Canvas drawing pipeline |
+| Floor Grid | Option B (Cached Pattern Canvas) | 2026-05-27 | Grid performance |
 
 ## Blockers
 
@@ -36,5 +37,5 @@ None
 
 ## Concerns
 
-- **Canvas rendering overhead:** Heavy neon glow filters (`ctx.shadowBlur`) can cause frame drops. We must implement high-performance rendering solutions (e.g., using simpler glow styles or offscreen buffers).
-- **Appwrite payload limits:** Ensure vehicle states are synchronized efficiently.
+- **Canvas rendering overhead:** Heavy neon glow filters (`ctx.shadowBlur`) can cause frame drops. Resolved: Chosen double-stroke rendering emulation to preserve 60fps.
+- **Particle count ceilings:** Ensure particles don't accumulate infinitely by imposing a rigid count ceiling.
