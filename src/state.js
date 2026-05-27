@@ -15,6 +15,7 @@ export const state = {
     isHost:          false,
     sublobbyUnsub:   null,
     messagesUnsub:   null,
+    onBotHpUpdate:   null,
     gameMode:        'solo', // 'solo' nebo 'duo'
     teamId:          1,      // ID týmu (1 pro místní tým)
 
@@ -38,6 +39,12 @@ export const state = {
 
     // Kosmetika
     selectedSkin: '#22c55e',
+
+    // RPG-MOBA Sub-mode
+    rpgMode: false, // true = RPG-MOBA, false = Přežití
+    selectedClassIndex: 0, // 0: Warrior, 1: Mage, 2: Ranger, 3: Healer
+    neutralSlimes: [],
+    spellEffects: [], // visual particles / indicators for spells
 
     // Canvas (inicializovány v main.js)
     canvas:        null,

@@ -12,7 +12,7 @@ import {
 } from './network.js';
 import { drawGame } from './renderer.js';
 import { updateGame, spawnAIBots } from './game.js';
-import { updateUI, updateOnlineList, setSkin, showScreen } from './ui.js';
+import { updateUI, updateOnlineList, initCustomizer, showScreen, initShopUI } from './ui.js';
 import { setupMobileControls, setupDesktopControls } from './controls.js';
 import { initAudio } from './audio.js';
 
@@ -28,8 +28,9 @@ window.onload = async () => {
     state.minimapCanvas = document.getElementById('minimap-canvas');
     state.mctx          = state.minimapCanvas.getContext('2d');
 
-    // Globální funkce pro HTML skiny
-    window.setSkin = (color) => setSkin(color);
+    // Inicializace postavy customizéru
+    initCustomizer();
+    initShopUI();
 
     const input  = document.getElementById('nickname-input');
 
@@ -87,6 +88,21 @@ window.onload = async () => {
         if (state.localPlayer) state.localPlayer.useHeal();
     });
 
+    // Spells HUD click triggers
+    const btnSpellQ = document.getElementById('btn-spell-q');
+    if (btnSpellQ) {
+        btnSpellQ.addEventListener('click', () => {
+            if (state.localPlayer && state.rpgMode) state.localPlayer.castSpellQ();
+        });
+    }
+
+    const btnSpellE = document.getElementById('btn-spell-e');
+    if (btnSpellE) {
+        btnSpellE.addEventListener('click', () => {
+            if (state.localPlayer && state.rpgMode) state.localPlayer.castSpellE();
+        });
+    }
+
     // Scroll zbraní (desktop)
     window.addEventListener('wheel', (e) => {
         if (!state.gameActive || !state.localPlayer) return;
@@ -139,10 +155,7 @@ window.startLocalGame = () => {
     // Pokud je SOLO: spawne se 19 botů, každý v jiném nepřátelském týmu (týmy 2 až 20)
     // Pokud je DUO: spawne se 18 nebo 19 botů, parťák dostane stejný Team 1, ostatní boti tvoří týmy po 2
     if (state.isHost) {
-        let botsCount = 19; // solo default
-        if (state.gameMode === 'duo' && state.currentRoom) {
-            botsCount = state.currentRoom.aiCount || 18;
-        }
+        let botsCount = 5; // Nastaveno na 5 botů pro testování
         spawnAIBots(botsCount);
     }
 

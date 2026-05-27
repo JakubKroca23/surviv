@@ -86,7 +86,15 @@ export function setupDesktopControls() {
         if (k === 's' || k === 'arrowdown')  state.keys.s = true;
         if (k === 'd' || k === 'arrowright') state.keys.d = true;
         if (k === 'r' && state.localPlayer) state.localPlayer.reload();
-        if ((k === 'h' || k === 'q') && state.localPlayer) state.localPlayer.useHeal();
+        if (state.localPlayer) {
+            if (state.rpgMode) {
+                if (k === 'q') state.localPlayer.castSpellQ();
+                if (k === 'e') state.localPlayer.castSpellE();
+                if (k === 'h') state.localPlayer.useHeal();
+            } else {
+                if (k === 'h' || k === 'q') state.localPlayer.useHeal();
+            }
+        }
     });
 
     window.addEventListener('keyup', (e) => {

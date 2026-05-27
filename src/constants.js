@@ -9,7 +9,7 @@ export const COLLECTION_ID       = 'players';
 export const ROOMS_COLLECTION_ID = 'rooms';
 export const MESSAGES_COLLECTION_ID = 'messages';
 
-export const MAP_SIZE = 2500;
+export const MAP_SIZE = 4000;
 
 export const WEAPONS = {
     fists:  { name: 'Pěsti',             damage: 15, cooldown: 350,  speed: 12, spread: 0,    count: 1, range: 60,   icon: 'fa-solid fa-hand-fist' },

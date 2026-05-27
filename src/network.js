@@ -115,6 +115,17 @@ function handleRealtimeEvent(response) {
 
     state.rawPlayers[pid] = data;
 
+    // Pokud je tento klient hostitel, synchronizovat poškození botů z databáze do lokálního pole aiBots
+    if (pid.startsWith('bot_') && state.isHost && state.aiBots) {
+        const localBot = state.aiBots.find(b => b.id === pid);
+        if (localBot && localBot.hp !== data.hp) {
+            localBot.hp = data.hp;
+            if (data.hp <= 0) {
+                localBot.killedBy = data.killedBy || 'Neznámý';
+            }
+        }
+    }
+
     if (pid !== state.playerId) {
         if (state.currentRoomId && data.roomId === state.currentRoomId) {
             if (data.activeBullets) {
@@ -138,7 +149,7 @@ function handleRealtimeEvent(response) {
 
         if (state.currentRoomId && data.roomId === state.currentRoomId) {
             if (!state.activePlayers[pid]) {
-                state.activePlayers[pid] = { ...data };
+                state.activePlayers[pid] = { ...data, lastUpdate: data.lastUpdate || Date.now() };
             } else {
                 Object.assign(state.activePlayers[pid], {
                     targetX:       data.x,
@@ -149,6 +160,8 @@ function handleRealtimeEvent(response) {
                     currentWeapon: data.currentWeapon,
                     color:         data.color,
                     name:          data.name,
+                    teamId:        data.teamId,
+                    lastUpdate:    data.lastUpdate || Date.now()
                 });
             }
         } else {

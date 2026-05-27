@@ -13,18 +13,131 @@ import { Permission, Role } from 'appwrite';
 export function updateGame() {
     if (!state.gameActive || !state.localPlayer) return;
     const p = state.localPlayer;
+    const nowTime = Date.now();
 
-    // 1. Pohyb hráče
+    // MOBA Init
+    if (state.rpgMode && (!state.mobaStructures || state.mobaStructures.length === 0)) {
+        state.mobaStructures = [
+            // Blue Turrets
+            { id: 'turret_blue_top', type: 'turret', teamId: 1, lane: 'top', x: 450, y: 1100, radius: 55, hp: 2000, maxHp: 2000, lastShotTime: 0 },
+            { id: 'turret_blue_mid', type: 'turret', teamId: 1, lane: 'mid', x: 1450, y: 2550, radius: 55, hp: 2000, maxHp: 2000, lastShotTime: 0 },
+            { id: 'turret_blue_bot', type: 'turret', teamId: 1, lane: 'bot', x: 2850, y: 3550, radius: 55, hp: 2000, maxHp: 2000, lastShotTime: 0 },
+            // Red Turrets
+            { id: 'turret_red_top', type: 'turret', teamId: 2, lane: 'top', x: 1150, y: 450, radius: 55, hp: 2000, maxHp: 2000, lastShotTime: 0 },
+            { id: 'turret_red_mid', type: 'turret', teamId: 2, lane: 'mid', x: 2550, y: 1450, radius: 55, hp: 2000, maxHp: 2000, lastShotTime: 0 },
+            { id: 'turret_red_bot', type: 'turret', teamId: 2, lane: 'bot', x: 3550, y: 2850, radius: 55, hp: 2000, maxHp: 2000, lastShotTime: 0 },
+            // Nexuses
+            { id: 'nexus_blue', type: 'nexus', teamId: 1, x: 300, y: 3700, radius: 75, hp: 4000, maxHp: 4000 },
+            { id: 'nexus_red', type: 'nexus', teamId: 2, x: 3700, y: 300, radius: 75, hp: 4000, maxHp: 4000 }
+        ];
+        state.mobaMinions = [];
+        state.mobaProjectiles = [];
+        state.lastMinionSpawnTime = 0;
+        state.lastPassiveGoldTime = 0;
+    }
+
+    // Respawn check
+    if (state.rpgMode && p.isDead) {
+        if (nowTime >= p.respawnTime) {
+            p.isDead = false;
+            const fx = p.teamId === 1 ? 250 + Math.random() * 150 : 3600 + Math.random() * 150;
+            const fy = p.teamId === 1 ? 3600 + Math.random() * 150 : 250 + Math.random() * 150;
+            p.x = fx;
+            p.y = fy;
+            p.hp = p.maxHp;
+            playSound('heal');
+            updateUI();
+        } else {
+            p.hp = 0;
+            simulateMOBALogic(nowTime);
+            return; // Skip normal controls while dead!
+        }
+    }
+
+    // Passive gold
+    if (state.rpgMode && (!state.lastPassiveGoldTime || nowTime - state.lastPassiveGoldTime >= 5000)) {
+        state.lastPassiveGoldTime = nowTime;
+        if (p && p.hp > 0) {
+            p.gold += 15;
+            updateUI();
+        }
+    }
+
+    if (state.rpgMode) {
+        simulateMOBALogic(nowTime);
+    }
+
+    // Odstranění neaktivních botů a hráčů, kteří se neozvali déle než 3 sekundy
+    for (const pid in state.activePlayers) {
+        const playerAge = nowTime - (state.activePlayers[pid].lastUpdate || nowTime);
+        if (playerAge > 3000) {
+            delete state.activePlayers[pid];
+        }
+    }
+
+    // 1. Pohyb hráče (pokud není zmražený)
     let mx = 0, my = 0;
-    if (state.isMobile) {
-        mx = state.joystickLeft.vx * p.speed;
-        my = state.joystickLeft.vy * p.speed;
+    if (!p.isFrozen) {
+        if (p.isLeaping) {
+            mx = Math.cos(p.leapAngle) * 12.5;
+            my = Math.sin(p.leapAngle) * 12.5;
+            if (nowTime >= p.leapEndTime) {
+                p.isLeaping = false;
+                playSound('punch');
+                state.spellEffects.push({
+                    type: 'smash',
+                    x: p.x,
+                    y: p.y,
+                    radius: 0,
+                    maxRadius: 125,
+                    startTime: nowTime,
+                    duration: 400
+                });
+                
+                // Leap smash damage
+                for (const id in state.activePlayers) {
+                    const enemy = state.activePlayers[id];
+                    if (enemy.hp <= 0) continue;
+                    if (enemy.teamId === p.teamId) continue;
+                    const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                    if (dist <= 125) {
+                        const dmg = 35 * (1 + (p.level - 1) * 0.15);
+                        enemy.hp = Math.max(0, enemy.hp - dmg);
+                        if (id.startsWith('bot_')) {
+                            if (state.aiBots) {
+                                const localBot = state.aiBots.find(b => b.id === id);
+                                if (localBot) {
+                                    localBot.hp = enemy.hp;
+                                    if (enemy.hp <= 0) {
+                                        localBot.killedBy = p.id;
+                                        p.addXp(60);
+                                        p.kills++;
+                                    }
+                                }
+                            }
+                            updateBotHpInDB(id, enemy.hp, p.id);
+                        }
+                    }
+                }
+            }
+        } else {
+            const currentSpeed = p.isSpinning ? p.speed * 1.25 : p.speed;
+            if (state.isMobile) {
+                mx = state.joystickLeft.vx * currentSpeed;
+                my = state.joystickLeft.vy * currentSpeed;
+            } else {
+                if (state.keys.w) my = -currentSpeed;
+                if (state.keys.s) my =  currentSpeed;
+                if (state.keys.a) mx = -currentSpeed;
+                if (state.keys.d) mx =  currentSpeed;
+                if (mx !== 0 && my !== 0) { mx *= 0.7071; my *= 0.7071; }
+            }
+        }
     } else {
-        if (state.keys.w) my = -p.speed;
-        if (state.keys.s) my =  p.speed;
-        if (state.keys.a) mx = -p.speed;
-        if (state.keys.d) mx =  p.speed;
-        if (mx !== 0 && my !== 0) { mx *= 0.7071; my *= 0.7071; }
+        // Zmražený hráč se nehýbe
+        if (nowTime >= p.freezeEndTime) {
+            p.isFrozen = false;
+        }
     }
 
     p.x = Math.max(p.radius, Math.min(MAP_SIZE - p.radius, p.x + mx));
@@ -45,9 +158,198 @@ export function updateGame() {
     // 2. Střelba (desktop)
     if (!state.isMobile && state.isMouseDown) p.shoot();
 
+    // Spinnig Warrior logic
+    if (p.isSpinning) {
+        if (nowTime >= p.spinEndTime) {
+            p.isSpinning = false;
+        } else {
+            if (!p.lastSpinDamageTime || nowTime - p.lastSpinDamageTime >= 200) {
+                p.lastSpinDamageTime = nowTime;
+                for (const id in state.activePlayers) {
+                    const enemy = state.activePlayers[id];
+                    if (enemy.hp <= 0) continue;
+                    if (enemy.teamId === p.teamId) continue;
+                    
+                    const dist = Math.hypot(enemy.x - p.x, enemy.y - p.y);
+                    if (dist <= 85) {
+                        const dmg = 7 * (1 + (p.level - 1) * 0.15);
+                        enemy.hp = Math.max(0, enemy.hp - dmg);
+                        if (id.startsWith('bot_')) {
+                            if (state.aiBots) {
+                                const localBot = state.aiBots.find(b => b.id === id);
+                                if (localBot) {
+                                    localBot.hp = enemy.hp;
+                                    if (enemy.hp <= 0) {
+                                        localBot.killedBy = p.id;
+                                        p.addXp(60);
+                                        p.kills++;
+                                    }
+                                }
+                            }
+                            updateBotHpInDB(id, enemy.hp, p.id);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Shield check local player
+    if (p.isShielded && nowTime >= p.shieldEndTime) {
+        p.isShielded = false;
+    }
+
     // Host spouští AI logiku
     if (state.isHost && state.aiBots && state.aiBots.length > 0) {
         updateAIBots();
+    }
+
+    // 2.5 Efekty kouzel (Spell Effects update)
+    for (let i = state.spellEffects.length - 1; i >= 0; i--) {
+        const effect = state.spellEffects[i];
+        if (effect.type === 'frost_nova') {
+            const elapsed = nowTime - effect.startTime;
+            effect.radius = (elapsed / effect.duration) * effect.maxRadius;
+            if (elapsed >= effect.duration) {
+                state.spellEffects.splice(i, 1);
+            }
+        } else if (effect.type === 'meteor') {
+            if (nowTime >= effect.endTime) {
+                // Exploze meteoru!
+                playSound('death');
+                state.spellEffects.push({
+                    type: 'meteor_explosion',
+                    x: effect.x,
+                    y: effect.y,
+                    radius: 0,
+                    maxRadius: 105,
+                    startTime: nowTime,
+                    duration: 450
+                });
+                
+                // Zásah meteorem
+                if (state.playerId === effect.ownerId) {
+                    for (const id in state.activePlayers) {
+                        const enemy = state.activePlayers[id];
+                        if (enemy.hp <= 0) continue;
+                        if (enemy.teamId === state.teamId) continue;
+                        
+                        const dist = Math.hypot(enemy.x - effect.x, enemy.y - effect.y);
+                        if (dist <= 105) {
+                            const dmg = 45 * (1 + (p.level - 1) * 0.15);
+                            enemy.hp = Math.max(0, enemy.hp - dmg);
+                            if (id.startsWith('bot_')) {
+                                if (state.aiBots) {
+                                    const localBot = state.aiBots.find(b => b.id === id);
+                                    if (localBot) {
+                                        localBot.hp = enemy.hp;
+                                        if (enemy.hp <= 0) {
+                                            localBot.killedBy = effect.ownerId;
+                                            p.addXp(60);
+                                            p.kills++;
+                                        }
+                                    }
+                                }
+                                updateBotHpInDB(id, enemy.hp, effect.ownerId);
+                            }
+                        }
+                    }
+                }
+                state.spellEffects.splice(i, 1);
+            }
+        } else if (effect.type === 'meteor_explosion' || effect.type === 'smash' || effect.type === 'sword_slash') {
+            const elapsed = nowTime - effect.startTime;
+            if (elapsed >= effect.duration) {
+                state.spellEffects.splice(i, 1);
+            }
+        } else if (effect.type === 'holy_ring') {
+            if (nowTime >= effect.endTime) {
+                state.spellEffects.splice(i, 1);
+            } else {
+                if (!effect.lastHealTime || nowTime - effect.lastHealTime >= 300) {
+                    effect.lastHealTime = nowTime;
+                    // Léčení lokálního hráče, pokud je ve zlatém kruhu kněze
+                    if (p.hp > 0 && Math.hypot(p.x - effect.x, p.y - effect.y) <= effect.radius) {
+                        p.hp = Math.min(p.maxHp, p.hp + 5);
+                        updateUI();
+                    }
+                }
+            }
+        }
+    }
+
+    // 2.7 Simulating Green Forest Slimes
+    if (state.rpgMode) {
+        // Inicializuj slizy pokud neexistují a jsme Host/Solo
+        if (state.isHost && (!state.neutralSlimes || state.neutralSlimes.length === 0)) {
+            state.neutralSlimes = [];
+            for (let i = 0; i < 24; i++) {
+                // Deterministické seedované rozmístění slizů po celé mapě
+                const sx = 200 + ((i * 153) % (MAP_SIZE - 400));
+                const sy = 200 + ((i * 277) % (MAP_SIZE - 400));
+                state.neutralSlimes.push({
+                    id: `slime_${i}`,
+                    x: sx,
+                    y: sy,
+                    radius: 23,
+                    hp: 55,
+                    maxHp: 55,
+                    speed: 2.2,
+                    angle: Math.random() * Math.PI * 2,
+                    lastAttackTime: 0,
+                    bounceTime: Math.random() * 100
+                });
+            }
+        }
+
+        // Aktualizuj slizy
+        if (state.neutralSlimes) {
+            for (let i = state.neutralSlimes.length - 1; i >= 0; i--) {
+                const s = state.neutralSlimes[i];
+                s.bounceTime += 0.08;
+
+                // Najít nejbližší cíl (hráč nebo bot)
+                let target = null;
+                let minDist = 220; // tracking radius
+
+                if (p.hp > 0) {
+                    const dist = Math.hypot(p.x - s.x, p.y - s.y);
+                    if (dist < minDist) {
+                        minDist = dist;
+                        target = p;
+                    }
+                }
+
+                // Pohyb a útok
+                if (target) {
+                    const angleTo = Math.atan2(target.y - s.y, target.x - s.x);
+                    s.x += Math.cos(angleTo) * s.speed;
+                    s.y += Math.sin(angleTo) * s.speed;
+                    s.angle = angleTo;
+
+                    // Dotek a kousnutí
+                    if (minDist < p.radius + s.radius && nowTime - s.lastAttackTime > 1000) {
+                        s.lastAttackTime = nowTime;
+                        playSound('punch');
+                        if (target === p && !p.isShielded) {
+                            p.hp = Math.max(0, p.hp - 10);
+                            spawnHitMarker(p.x, p.y);
+                            updateUI();
+                            if (p.hp <= 0) handleDeath('Forest Slime');
+                        }
+                    }
+                } else {
+                    // Náhodný malý pohyb
+                    s.x += Math.cos(s.angle) * (s.speed * 0.25);
+                    s.y += Math.sin(s.angle) * (s.speed * 0.25);
+                    if (Math.random() < 0.02) s.angle = Math.random() * Math.PI * 2;
+                }
+
+                // Hranice mapy
+                s.x = Math.max(s.radius, Math.min(MAP_SIZE - s.radius, s.x));
+                s.y = Math.max(s.radius, Math.min(MAP_SIZE - s.radius, s.y));
+            }
+        }
     }
 
     // 3. Projektily
@@ -76,8 +378,90 @@ export function updateGame() {
         }
         if (removed) continue;
 
-        // Určit tým střelce projektilu
         const shooterTeam = b.ownerId === state.playerId ? state.teamId : (state.activePlayers[b.ownerId]?.teamId || 2);
+
+        // Zásah MOBA minionů
+        if (state.rpgMode && state.mobaMinions) {
+            for (let j = state.mobaMinions.length - 1; j >= 0; j--) {
+                const mn = state.mobaMinions[j];
+                if (mn.teamId === shooterTeam) continue;
+                if (Math.hypot(b.x - mn.x, b.y - mn.y) < mn.radius) {
+                    mn.hp -= b.damage;
+                    spawnHitMarker(b.x, b.y);
+                    playSound('hit');
+                    state.localBullets.splice(i, 1);
+                    removed = true;
+                    
+                    if (mn.hp <= 0) {
+                        if (b.ownerId === state.playerId) {
+                            p.gold += 25;
+                            p.addXp(20);
+                            updateUI();
+                        }
+                        state.mobaMinions.splice(j, 1);
+                    }
+                    break;
+                }
+            }
+            if (removed) continue;
+        }
+
+        // Zásah MOBA staveb (turret/Nexus)
+        if (state.rpgMode && state.mobaStructures) {
+            for (const st of state.mobaStructures) {
+                if (st.hp <= 0) continue;
+                if (st.teamId === shooterTeam) continue;
+                if (Math.hypot(b.x - st.x, b.y - st.y) < st.radius) {
+                    const alliedMinionsNear = state.mobaMinions.some(mn => mn.teamId === shooterTeam && Math.hypot(mn.x - st.x, mn.y - st.y) < 400);
+                    const dmg = alliedMinionsNear ? b.damage : b.damage * 0.1;
+                    
+                    st.hp = Math.max(0, st.hp - dmg);
+                    spawnHitMarker(b.x, b.y);
+                    playSound('hit');
+                    state.localBullets.splice(i, 1);
+                    removed = true;
+                    
+                    if (st.hp <= 0) {
+                        playSound('death');
+                        if (b.ownerId === state.playerId) {
+                            p.gold += 150;
+                            p.addXp(150);
+                            updateUI();
+                        }
+                        if (st.type === 'nexus') {
+                            handleNexusDestroyed(st.teamId);
+                        }
+                    }
+                    break;
+                }
+            }
+            if (removed) continue;
+        }
+
+        // Zásah slizů (RPG sub-mode)
+        if (state.rpgMode && state.neutralSlimes && b.ownerId === state.playerId) {
+            for (let j = state.neutralSlimes.length - 1; j >= 0; j--) {
+                const s = state.neutralSlimes[j];
+                if (Math.hypot(b.x - s.x, b.y - s.y) < s.radius) {
+                    s.hp -= b.damage;
+                    spawnHitMarker(b.x, b.y);
+                    playSound('hit');
+                    state.localBullets.splice(i, 1);
+                    removed = true;
+
+                    // Sliz zemřel
+                    if (s.hp <= 0) {
+                        playSound('pickup');
+                        p.addXp(40); // +40 XP za zničení slizu!
+                        // Drop loot z oběti
+                        spawnLoot(s.x, s.y, Math.random() < 0.35 ? 'medkit' : 'pistol');
+                        state.neutralSlimes.splice(j, 1);
+                    }
+                    break;
+                }
+            }
+            if (removed) continue;
+        }
 
         if (b.ownerId === state.playerId) {
             // Zásah nepřítele (klientský hit detect)
@@ -85,7 +469,6 @@ export function updateGame() {
                 const enemy = state.activePlayers[id];
                 if (enemy.hp <= 0) continue;
                 
-                // Přeskočit, pokud je to spojenec ze stejného týmu (Friendly Fire vypnuto)
                 const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? state.aiBots.find(b => b.id === id)?.teamId : 2);
                 if (enemyTeam === shooterTeam) continue;
 
@@ -98,6 +481,19 @@ export function updateGame() {
                     if (id.startsWith('bot_')) {
                         const newHp = Math.max(0, enemy.hp - b.damage);
                         enemy.hp = newHp;
+                        
+                        if (state.aiBots) {
+                            const localBot = state.aiBots.find(b => b.id === id);
+                            if (localBot) {
+                                localBot.hp = newHp;
+                                if (newHp <= 0) {
+                                    localBot.killedBy = state.playerId;
+                                    p.addXp(60); // +60 XP za zabití nepřítele!
+                                    p.kills++;
+                                }
+                            }
+                        }
+                        
                         updateBotHpInDB(id, newHp, state.playerId);
                     }
                     break;
@@ -106,8 +502,13 @@ export function updateGame() {
         } else {
             // Zásah lokálního hráče
             if (Math.hypot(b.x - p.x, b.y - p.y) < p.radius && p.hp > 0) {
-                // Přeskočit, pokud je to spojenec ze stejného týmu
                 if (p.teamId === shooterTeam) continue;
+
+                // Absorbuj poškození štítem!
+                if (p.isShielded) {
+                    state.localBullets.splice(i, 1);
+                    break;
+                }
 
                 p.hp = Math.max(0, p.hp - b.damage);
                 spawnHitMarker(b.x, b.y);
@@ -152,9 +553,11 @@ export function updateGame() {
     // 6. Zóna damage
     const zone = getZoneState();
     if (Math.hypot(p.x - zone.center.x, p.y - zone.center.y) > zone.radius) {
-        p.hp = Math.max(0, p.hp - (zone.state === 'collapsing' ? 1.0 : 0.4));
-        updateUI();
-        if (p.hp <= 0) handleDeath('Zóna');
+        if (!p.isShielded) {
+            p.hp = Math.max(0, p.hp - (zone.state === 'collapsing' ? 1.0 : 0.4));
+            updateUI();
+            if (p.hp <= 0) handleDeath('Zóna');
+        }
     }
 
     // 7. Kontrola konce hry (pokud zbýváš pouze ty / tvůj tým, vyhráváš!)
@@ -163,7 +566,6 @@ export function updateGame() {
         for (const id in state.activePlayers) {
             const enemy = state.activePlayers[id];
             if (enemy.hp > 0) {
-                // Přičíst pouze pokud je nepřítel z cizího týmu
                 const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? state.aiBots.find(b => b.id === id)?.teamId : 2);
                 if (enemyTeam !== p.teamId) {
                     enemyAlive++;
@@ -171,7 +573,6 @@ export function updateGame() {
             }
         }
         
-        // Povolit výhru po 6 vteřinách
         const elapsed = (Date.now() - state.playStartTime) / 1000;
         if (elapsed > 6 && enemyAlive === 0) {
             handleWin();
@@ -193,6 +594,23 @@ export function spawnLoot(x, y, type) {
 
 export function spawnHitMarker(x, y) {
     state.hitMarkers.push({ x, y, alpha: 1 });
+    
+    // Generování 6 dynamických létajících částic krve
+    if (!state.bloodParticles) state.bloodParticles = [];
+    for (let i = 0; i < 6; i++) {
+        const angle = Math.random() * Math.PI * 2;
+        const speed = 1.2 + Math.random() * 2.8;
+        state.bloodParticles.push({
+            x:      x,
+            y:      y,
+            vx:     Math.cos(angle) * speed,
+            vy:     Math.sin(angle) * speed,
+            radius: 2.5 + Math.random() * 3.5,
+            color:  Math.random() < 0.3 ? '#7f1d1d' : '#dc2626', // Tmavá karmínová a zářivá červená
+            alpha:  1.0,
+            decay:  0.03 + Math.random() * 0.03
+        });
+    }
 }
 
 export async function handleWin() {
@@ -232,6 +650,19 @@ export async function handleWin() {
 
 export async function handleDeath(killerId) {
     if (!state.gameActive) return;
+
+    if (state.rpgMode) {
+        // Fountain base respawning!
+        const p = state.localPlayer;
+        if (!p || p.isDead) return;
+        p.isDead = true;
+        p.hp = 0;
+        p.respawnTime = Date.now() + 6000;
+        playSound('death');
+        updateUI();
+        return;
+    }
+
     state.gameActive = false;
     playSound('death');
     if (state.networkInterval) { clearInterval(state.networkInterval); state.networkInterval = null; }
@@ -282,8 +713,13 @@ export function spawnAIBots(count) {
         const botId = `bot_${state.currentRoomId}_${i}`;
         const names = ['Rex', 'Buster', 'Viper', 'Spike', 'Shadow', 'Ghost', 'Alpha', 'Bravo', 'Hunter', 'Blade', 'Zero', 'Apex', 'Ranger', 'Titan', 'Slayer'];
         let botName = `BOT ${names[i % names.length]}`;
-        const colors = ['#eab308', '#ec4899', '#a855f7', '#06b6d4', '#f43f5e'];
-        let botColor = colors[Math.floor(Math.random() * colors.length)];
+        // Náhodná customizace pro AI boty ve formátu #RRGGBBHFA
+        const botColors = ['#22c55e', '#3b82f6', '#f97316', '#ef4444', '#eab308', '#a855f7', '#06b6d4', '#ec4899'];
+        const randomBaseColor = botColors[Math.floor(Math.random() * botColors.length)];
+        const randomHat = String(Math.floor(Math.random() * 6)); // 0-5
+        const randomFace = String(Math.floor(Math.random() * 4)); // 0-3
+        const randomVest = String(Math.floor(Math.random() * 5)); // 0-4
+        let botColor = randomBaseColor + randomHat + randomFace + randomVest;
         
         let team = i + 2; // výchozí chování (každý sám za sebe)
         
@@ -295,7 +731,7 @@ export function spawnAIBots(count) {
                 if (i === 0) {
                     team = 1; // Team 1 s námi!
                     botName = `PARŤÁK ${names[0]}`;
-                    botColor = '#34d399'; // Mintově zelená barva pro společníka
+                    botColor = '#34d399031'; // Speciální skin pro společníka (zelená, happy tvář, camo vesta)
                 } else {
                     // Ostatních 18 botů je rozděleno po dvojicích do týmů 2 až 10
                     team = Math.floor((i - 1) / 2) + 2;
@@ -304,6 +740,13 @@ export function spawnAIBots(count) {
                 // Hrajeme ve dvou reálných hráčích. Všichni boti tvoří týmy po dvou od Teamu 2
                 team = Math.floor(i / 2) + 2;
             }
+        }
+
+        // RPG attributes for bots
+        const botClassIndex = state.rpgMode ? Math.floor(Math.random() * 4) : -1;
+        const botLevel = 1;
+        if (state.rpgMode) {
+            botName = `${botName}|${botClassIndex}|${botLevel}`;
         }
 
         const bot = {
@@ -322,7 +765,15 @@ export function spawnAIBots(count) {
             radius: 28,
             roomId: state.currentRoomId,
             teamId: team,
-            bulletsToSend: []
+            bulletsToSend: [],
+            rpgMode: state.rpgMode,
+            classIndex: botClassIndex,
+            level: botLevel,
+            isFrozen: false,
+            freezeEndTime: 0,
+            isShielded: false,
+            shieldEndTime: 0,
+            lastSpellCastTime: 0
         };
         
         state.aiBots.push(bot);
@@ -347,9 +798,24 @@ export function updateAIBots() {
     if (!state.aiBots) return;
     
     const zone = getZoneState();
+    const now = Date.now();
     
     state.aiBots.forEach(bot => {
         if (bot.hp <= 0) return;
+        
+        // Zmrazení botů
+        if (bot.isFrozen) {
+            if (now >= bot.freezeEndTime) {
+                bot.isFrozen = false;
+            } else {
+                return; // Zmrazený bot se nehýbe ani neútočí
+            }
+        }
+
+        // Ticking shield
+        if (bot.isShielded && now >= bot.shieldEndTime) {
+            bot.isShielded = false;
+        }
         
         const dToCenter = Math.hypot(bot.x - zone.center.x, bot.y - zone.center.y);
         let moveX = 0;
@@ -361,7 +827,6 @@ export function updateAIBots() {
         let nearestEnemy = null;
         let minDist = 750;
         
-        // Kontrola lokálního hráče
         if (state.localPlayer && state.localPlayer.hp > 0 && state.localPlayer.teamId !== bot.teamId) {
             const dist = Math.hypot(bot.x - state.localPlayer.x, bot.y - state.localPlayer.y);
             if (dist < minDist) {
@@ -370,14 +835,12 @@ export function updateAIBots() {
             }
         }
         
-        // Kontrola ostatních hráčů (reálných i AI)
         for (const pid in state.activePlayers) {
             const enemy = state.activePlayers[pid];
             if (enemy.hp <= 0) continue;
             
-            // Ověřit, zda je nepřítel z cizího týmu
             const enemyTeam = enemy.teamId || (pid.startsWith('bot_') ? state.aiBots.find(b => b.id === pid)?.teamId : 2);
-            if (enemyTeam === bot.teamId) continue; // stejný tým, ignorovat!
+            if (enemyTeam === bot.teamId) continue;
 
             const dist = Math.hypot(bot.x - enemy.x, bot.y - enemy.y);
             if (dist < minDist) {
@@ -387,11 +850,10 @@ export function updateAIBots() {
         }
         
         if (nearestEnemy) {
-            // Zaměřit cíl
             targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
             
             // Pohyb k cíli
-            if (minDist > 180) {
+            if (minDist > 140) {
                 moveX = Math.cos(targetAngle) * bot.speed;
                 moveY = Math.sin(targetAngle) * bot.speed;
             } else {
@@ -399,48 +861,154 @@ export function updateAIBots() {
                 moveY = Math.cos(targetAngle) * bot.speed;
             }
             
-            // Střelba
-            const now = Date.now();
-            if (now - bot.lastShotTime > 1300 + Math.random() * 900) {
+            // AI casting spells in RPG Mode
+            if (bot.rpgMode && now - bot.lastSpellCastTime > 6000 + Math.random() * 4000) {
+                bot.lastSpellCastTime = now;
+                if (bot.classIndex === 1 && minDist < 240) {
+                    // Bot Mage - Frost Nova
+                    playSound('shoot_smg');
+                    state.spellEffects.push({
+                        type: 'frost_nova',
+                        x: bot.x,
+                        y: bot.y,
+                        radius: 0,
+                        maxRadius: 130,
+                        startTime: now,
+                        duration: 400
+                    });
+                    // Freeze target
+                    if (nearestEnemy === state.localPlayer && !state.localPlayer.isShielded) {
+                        state.localPlayer.isFrozen = true;
+                        state.localPlayer.freezeEndTime = now + 2000;
+                    }
+                } else if (bot.classIndex === 3 && bot.hp < 40) {
+                    // Bot Healer - Divine Shield
+                    playSound('heal');
+                    bot.isShielded = true;
+                    bot.shieldEndTime = now + 2000;
+                }
+            }
+
+            // Střelba / Zbraně
+            if (now - bot.lastShotTime > 1400 + Math.random() * 800) {
                 bot.lastShotTime = now;
                 
-                const weapon = WEAPONS.rifle;
-                const dev = (Math.random() - 0.5) * 0.12;
-                const ba = targetAngle + dev;
-                
-                state.localBullets.push({
-                    id:        `${bot.id}_${now}_0`,
-                    ownerId:   bot.id,
-                    x:         bot.x + Math.cos(targetAngle) * (bot.radius + 15),
-                    y:         bot.y + Math.sin(targetAngle) * (bot.radius + 15),
-                    vx:        Math.cos(ba) * weapon.speed,
-                    vy:        Math.sin(ba) * weapon.speed,
-                    damage:    weapon.damage,
-                    range:     weapon.range,
-                    travelled: 0,
-                    color:     bot.color,
-                    timestamp: now,
-                });
-                
-                if (state.localPlayer && Math.hypot(bot.x - state.localPlayer.x, bot.y - state.localPlayer.y) < 1000) {
-                    playSound('shoot_rifle');
+                if (bot.rpgMode) {
+                    const levelMultiplier = 1 + (bot.level - 1) * 0.15;
+                    if (bot.classIndex === 0) {
+                        // Warrior Melee swing
+                        playSound('punch');
+                        state.spellEffects.push({
+                            type: 'sword_slash',
+                            x: bot.x,
+                            y: bot.y,
+                            angle: targetAngle,
+                            startTime: now,
+                            duration: 200
+                        });
+                        
+                        if (nearestEnemy === state.localPlayer && minDist < 90 && !state.localPlayer.isShielded) {
+                            state.localPlayer.hp = Math.max(0, state.localPlayer.hp - 16 * levelMultiplier);
+                            playSound('hit');
+                            updateUI();
+                            if (state.localPlayer.hp <= 0) handleDeath(bot.id);
+                        }
+                    } else if (bot.classIndex === 1) {
+                        // Mage fireball
+                        playSound('shoot_rifle');
+                        const dev = (Math.random() - 0.5) * 0.1;
+                        const ba = targetAngle + dev;
+                        state.localBullets.push({
+                            id: `${bot.id}_fb_${now}`,
+                            ownerId: bot.id,
+                            x: bot.x + Math.cos(targetAngle) * (bot.radius + 15),
+                            y: bot.y + Math.sin(targetAngle) * (bot.radius + 15),
+                            vx: Math.cos(ba) * 9.5,
+                            vy: Math.sin(ba) * 9.5,
+                            damage: 20 * levelMultiplier,
+                            range: 520,
+                            travelled: 0,
+                            color: '#f97316',
+                            timestamp: now,
+                            bulletType: 'fireball'
+                        });
+                    } else if (bot.classIndex === 2) {
+                        // Ranger bow arrow
+                        playSound('shoot_pistol');
+                        const dev = (Math.random() - 0.5) * 0.05;
+                        const ba = targetAngle + dev;
+                        state.localBullets.push({
+                            id: `${bot.id}_arr_${now}`,
+                            ownerId: bot.id,
+                            x: bot.x + Math.cos(targetAngle) * (bot.radius + 15),
+                            y: bot.y + Math.sin(targetAngle) * (bot.radius + 15),
+                            vx: Math.cos(ba) * 17.5,
+                            vy: Math.sin(ba) * 17.5,
+                            damage: 15 * levelMultiplier,
+                            range: 820,
+                            travelled: 0,
+                            color: '#fbbf24',
+                            timestamp: now,
+                            bulletType: 'arrow'
+                        });
+                    } else if (bot.classIndex === 3) {
+                        // Priest holy beam
+                        playSound('shoot_smg');
+                        const dev = (Math.random() - 0.5) * 0.02;
+                        const ba = targetAngle + dev;
+                        state.localBullets.push({
+                            id: `${bot.id}_hb_${now}`,
+                            ownerId: bot.id,
+                            x: bot.x + Math.cos(targetAngle) * (bot.radius + 15),
+                            y: bot.y + Math.sin(targetAngle) * (bot.radius + 15),
+                            vx: Math.cos(ba) * 20,
+                            vy: Math.sin(ba) * 20,
+                            damage: 12 * levelMultiplier,
+                            range: 700,
+                            travelled: 0,
+                            color: '#fbbf24',
+                            timestamp: now,
+                            bulletType: 'holy_beam'
+                        });
+                    }
+                } else {
+                    const weapon = WEAPONS.rifle;
+                    const dev = (Math.random() - 0.5) * 0.12;
+                    const ba = targetAngle + dev;
+                    
+                    state.localBullets.push({
+                        id:        `${bot.id}_${now}_0`,
+                        ownerId:   bot.id,
+                        x:         bot.x + Math.cos(targetAngle) * (bot.radius + 15),
+                        y:         bot.y + Math.sin(targetAngle) * (bot.radius + 15),
+                        vx:        Math.cos(ba) * weapon.speed,
+                        vy:        Math.sin(ba) * weapon.speed,
+                        damage:    weapon.damage,
+                        range:     weapon.range,
+                        travelled: 0,
+                        color:     bot.color,
+                        timestamp: now,
+                    });
+                    
+                    if (state.localPlayer && Math.hypot(bot.x - state.localPlayer.x, bot.y - state.localPlayer.y) < 1000) {
+                        playSound('shoot_rifle');
+                    }
+                    
+                    bot.bulletsToSend.push({
+                        id:        `${bot.id}_${now}_0`,
+                        ownerId:   bot.id,
+                        x:         bot.x + Math.cos(targetAngle) * (bot.radius + 15),
+                        y:         bot.y + Math.sin(targetAngle) * (bot.radius + 15),
+                        vx:        Math.cos(ba) * weapon.speed,
+                        vy:        Math.sin(ba) * weapon.speed,
+                        damage:    weapon.damage,
+                        range:     weapon.range,
+                        color:     bot.color,
+                        timestamp: now
+                    });
                 }
-                
-                bot.bulletsToSend.push({
-                    id:        `${bot.id}_${now}_0`,
-                    ownerId:   bot.id,
-                    x:         bot.x + Math.cos(targetAngle) * (bot.radius + 15),
-                    y:         bot.y + Math.sin(targetAngle) * (bot.radius + 15),
-                    vx:        Math.cos(ba) * weapon.speed,
-                    vy:        Math.sin(ba) * weapon.speed,
-                    damage:    weapon.damage,
-                    range:     weapon.range,
-                    color:     bot.color,
-                    timestamp: now
-                });
             }
         } else {
-            // Není cíl -> jít do zóny nebo bloudit
             if (dToCenter > zone.radius * 0.75) {
                 const a = Math.atan2(zone.center.y - bot.y, zone.center.x - bot.x);
                 targetAngle = a;
@@ -454,17 +1022,14 @@ export function updateAIBots() {
             }
         }
         
-        // Pohyb botů
         bot.x = Math.max(bot.radius, Math.min(MAP_SIZE - bot.radius, bot.x + moveX));
         bot.y = Math.max(bot.radius, Math.min(MAP_SIZE - bot.radius, bot.y + moveY));
         
-        // Plynulé otáčení
         let diff = targetAngle - bot.angle;
         while (diff < -Math.PI) diff += Math.PI * 2;
         while (diff >  Math.PI) diff -= Math.PI * 2;
         bot.angle += diff * 0.15;
         
-        // Kolize s překážkami
         state.mapObstacles.forEach(obs => {
             if (obs.hp <= 0) return;
             const d = Math.hypot(bot.x - obs.x, bot.y - obs.y);
@@ -476,15 +1041,15 @@ export function updateAIBots() {
             }
         });
         
-        // Poškození zónou
         if (dToCenter > zone.radius) {
-            bot.hp = Math.max(0, bot.hp - (zone.state === 'collapsing' ? 0.8 : 0.35));
-            if (bot.hp <= 0) {
-                bot.killedBy = 'Zóna';
+            if (!bot.isShielded) {
+                bot.hp = Math.max(0, bot.hp - (zone.state === 'collapsing' ? 0.8 : 0.35));
+                if (bot.hp <= 0) {
+                    bot.killedBy = 'Zóna';
+                }
             }
         }
 
-        // Host render optim
         if (bot.hp > 0) {
             if (!state.activePlayers[bot.id]) {
                 state.activePlayers[bot.id] = { ...bot, targetX: bot.x, targetY: bot.y };
@@ -500,7 +1065,9 @@ export function updateAIBots() {
                     name: bot.name,
                     teamId: bot.teamId,
                     targetX: bot.x,
-                    targetY: bot.y
+                    targetY: bot.y,
+                    isFrozen: bot.isFrozen,
+                    isShielded: bot.isShielded
                 });
             }
         } else {
@@ -551,4 +1118,315 @@ export async function updateBotHpInDB(botId, hp, killerId) {
     } catch (err) {
         console.error('updateBotHpInDB chyba:', err);
     }
+}
+state.onBotHpUpdate = updateBotHpInDB;
+
+
+export function simulateMOBALogic(nowTime) {
+    if (!state.mobaMinions) return;
+
+    // 1. Minion Wave Spawning
+    if (nowTime - (state.lastMinionSpawnTime || 0) >= 30000) {
+        state.lastMinionSpawnTime = nowTime;
+        const lanes = ['top', 'mid', 'bot'];
+        const types = ['knight', 'caster', 'tank'];
+        
+        lanes.forEach(lane => {
+            types.forEach((type, index) => {
+                // Blue Minion
+                state.mobaMinions.push({
+                    id: `minion_blue_${lane}_${type}_${nowTime}`,
+                    teamId: 1,
+                    lane,
+                    type,
+                    x: 300 + (Math.random() - 0.5) * 40,
+                    y: 3700 + (Math.random() - 0.5) * 40,
+                    radius: type === 'knight' ? 20 : (type === 'caster' ? 18 : 24),
+                    hp: type === 'knight' ? 120 : (type === 'caster' ? 80 : 200),
+                    maxHp: type === 'knight' ? 120 : (type === 'caster' ? 80 : 200),
+                    speed: type === 'knight' ? 2.5 : (type === 'caster' ? 2.2 : 2.0),
+                    damage: type === 'knight' ? 10 : (type === 'caster' ? 15 : 25),
+                    range: type === 'caster' ? 220 : 60,
+                    lastAttackTime: 0,
+                    currentPathIndex: 0,
+                    target: null
+                });
+                
+                // Red Minion
+                state.mobaMinions.push({
+                    id: `minion_red_${lane}_${type}_${nowTime}`,
+                    teamId: 2,
+                    lane,
+                    type,
+                    x: 3700 + (Math.random() - 0.5) * 40,
+                    y: 300 + (Math.random() - 0.5) * 40,
+                    radius: type === 'knight' ? 20 : (type === 'caster' ? 18 : 24),
+                    hp: type === 'knight' ? 120 : (type === 'caster' ? 80 : 200),
+                    maxHp: type === 'knight' ? 120 : (type === 'caster' ? 80 : 200),
+                    speed: type === 'knight' ? 2.5 : (type === 'caster' ? 2.2 : 2.0),
+                    damage: type === 'knight' ? 10 : (type === 'caster' ? 15 : 25),
+                    range: type === 'caster' ? 220 : 60,
+                    lastAttackTime: 0,
+                    currentPathIndex: 0,
+                    target: null
+                });
+            });
+        });
+    }
+
+    // Path definitions
+    const getMinionPath = (teamId, lane) => {
+        if (lane === 'top') {
+            return teamId === 1 
+                ? [{ x: 300, y: 3700 }, { x: 300, y: 300 }, { x: 3700, y: 300 }]
+                : [{ x: 3700, y: 300 }, { x: 300, y: 300 }, { x: 300, y: 3700 }];
+        } else if (lane === 'bot') {
+            return teamId === 1
+                ? [{ x: 300, y: 3700 }, { x: 3700, y: 3700 }, { x: 3700, y: 300 }]
+                : [{ x: 3700, y: 300 }, { x: 3700, y: 3700 }, { x: 300, y: 3700 }];
+        } else { // mid
+            return teamId === 1
+                ? [{ x: 300, y: 3700 }, { x: 2000, y: 2000 }, { x: 3700, y: 300 }]
+                : [{ x: 3700, y: 300 }, { x: 2000, y: 2000 }, { x: 300, y: 3700 }];
+        }
+    };
+
+    // 2. Minions Marching & Aggro Loop
+    for (let i = state.mobaMinions.length - 1; i >= 0; i--) {
+        const mn = state.mobaMinions[i];
+        
+        // Target tracking & scanning
+        let target = mn.target;
+        if (target && (target.hp <= 0 || Math.hypot(mn.x - target.x, mn.y - target.y) > 300)) {
+            mn.target = null;
+            target = null;
+        }
+
+        if (!target) {
+            let nearestEnemy = null;
+            let minDist = 220; // aggro range
+            
+            // Allied structures backdoor detection & aggro
+            state.mobaStructures.forEach(st => {
+                if (st.hp > 0 && st.teamId !== mn.teamId) {
+                    const d = Math.hypot(mn.x - st.x, mn.y - st.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearestEnemy = st;
+                    }
+                }
+            });
+
+            // Enemy players
+            if (state.localPlayer && state.localPlayer.hp > 0 && state.localPlayer.teamId !== mn.teamId) {
+                const d = Math.hypot(mn.x - state.localPlayer.x, mn.y - state.localPlayer.y);
+                if (d < minDist) {
+                    minDist = d;
+                    nearestEnemy = state.localPlayer;
+                }
+            }
+            
+            for (const pid in state.activePlayers) {
+                const enemy = state.activePlayers[pid];
+                if (enemy.hp > 0 && enemy.teamId !== mn.teamId) {
+                    const d = Math.hypot(mn.x - enemy.x, mn.y - enemy.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearestEnemy = enemy;
+                    }
+                }
+            }
+
+            // Other minions
+            state.mobaMinions.forEach(emn => {
+                if (emn.teamId !== mn.teamId) {
+                    const d = Math.hypot(mn.x - emn.x, mn.y - emn.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        nearestEnemy = emn;
+                    }
+                }
+            });
+
+            if (nearestEnemy) {
+                mn.target = nearestEnemy;
+                target = nearestEnemy;
+            }
+        }
+
+        // Action
+        if (target) {
+            const dist = Math.hypot(target.x - mn.x, target.y - mn.y);
+            if (dist <= mn.range + target.radius) {
+                // Halt and attack!
+                if (nowTime - mn.lastAttackTime >= 1000) {
+                    mn.lastAttackTime = nowTime;
+                    playSound('hit');
+                    
+                    target.hp = Math.max(0, target.hp - mn.damage);
+                    
+                    // If target died
+                    if (target.hp <= 0) {
+                        if (target.id === state.playerId) {
+                            handleDeath('Enemy Minion');
+                        } else if (target.type === 'nexus') {
+                            handleNexusDestroyed(target.teamId);
+                        }
+                        mn.target = null;
+                    }
+                }
+            } else {
+                // Move towards target
+                const a = Math.atan2(target.y - mn.y, target.x - mn.x);
+                mn.x += Math.cos(a) * mn.speed;
+                mn.y += Math.sin(a) * mn.speed;
+            }
+        } else {
+            // March lane path points
+            const path = getMinionPath(mn.teamId, mn.lane);
+            const pt = path[mn.currentPathIndex];
+            if (pt) {
+                const distToPt = Math.hypot(mn.x - pt.x, mn.y - pt.y);
+                if (distToPt < 35) {
+                    mn.currentPathIndex = Math.min(path.length - 1, mn.currentPathIndex + 1);
+                }
+                const nextPt = path[mn.currentPathIndex];
+                const a = Math.atan2(nextPt.y - mn.y, nextPt.x - mn.x);
+                mn.x += Math.cos(a) * mn.speed;
+                mn.y += Math.sin(a) * mn.speed;
+            }
+        }
+    }
+
+    // 3. Turret Magical Targeting & Homing projectile shooting
+    state.mobaStructures.forEach(st => {
+        if (st.type !== 'turret' || st.hp <= 0) return;
+        
+        let target = null;
+        let minDist = 420; // turret range
+
+        // Prioritize enemy minions
+        state.mobaMinions.forEach(mn => {
+            if (mn.teamId !== st.teamId) {
+                const d = Math.hypot(st.x - mn.x, st.y - mn.y);
+                if (d < minDist) {
+                    minDist = d;
+                    target = mn;
+                }
+            }
+        });
+
+        // Then players
+        if (!target) {
+            if (state.localPlayer && state.localPlayer.hp > 0 && state.localPlayer.teamId !== st.teamId) {
+                const d = Math.hypot(st.x - state.localPlayer.x, st.y - state.localPlayer.y);
+                if (d < minDist) {
+                    minDist = d;
+                    target = state.localPlayer;
+                }
+            }
+            
+            for (const pid in state.activePlayers) {
+                const enemy = state.activePlayers[pid];
+                if (enemy.hp > 0 && enemy.teamId !== st.teamId) {
+                    const d = Math.hypot(st.x - enemy.x, st.y - enemy.y);
+                    if (d < minDist) {
+                        minDist = d;
+                        target = enemy;
+                    }
+                }
+            }
+        }
+
+        if (target && nowTime - st.lastShotTime >= 1500) {
+            st.lastShotTime = nowTime;
+            playSound('shoot_rifle');
+            
+            state.mobaProjectiles.push({
+                id: `proj_${st.id}_${nowTime}`,
+                teamId: st.teamId,
+                x: st.x,
+                y: st.y,
+                target: target,
+                speed: 8.5,
+                damage: 45
+            });
+        }
+    });
+
+    // 4. Homing Projectiles update
+    for (let i = state.mobaProjectiles.length - 1; i >= 0; i--) {
+        const pr = state.mobaProjectiles[i];
+        const target = pr.target;
+        
+        if (!target || target.hp <= 0) {
+            state.mobaProjectiles.splice(i, 1);
+            continue;
+        }
+
+        const dist = Math.hypot(target.x - pr.x, target.y - pr.y);
+        if (dist < 22) {
+            // Hit!
+            target.hp = Math.max(0, target.hp - pr.damage);
+            playSound('hit');
+            
+            if (target.hp <= 0) {
+                if (target.id === state.playerId) {
+                    handleDeath('Defense Turret');
+                } else {
+                    const idx = state.mobaMinions.indexOf(target);
+                    if (idx !== -1) state.mobaMinions.splice(idx, 1);
+                }
+            }
+            state.mobaProjectiles.splice(i, 1);
+        } else {
+            const a = Math.atan2(target.y - pr.y, target.x - pr.x);
+            pr.x += Math.cos(a) * pr.speed;
+            pr.y += Math.sin(a) * pr.speed;
+        }
+    }
+}
+
+export async function handleNexusDestroyed(destroyedTeamId) {
+    if (!state.gameActive) return;
+    state.gameActive = false;
+    playSound('death');
+    
+    if (state.networkInterval) { clearInterval(state.networkInterval); state.networkInterval = null; }
+    if (state.botInterval) { clearInterval(state.botInterval); state.botInterval = null; }
+
+    const isVictory = destroyedTeamId === 2; // Red Nexus fell
+
+    const title = document.querySelector('.death-card h2');
+    if (title) {
+        title.textContent = isVictory ? 'VÍTĚZSTVÍ!' : 'PORÁŽKA!';
+        title.style.color = isVictory ? '#fbbf24' : '#ef4444';
+    }
+
+    const card = document.querySelector('.death-card');
+    if (card) {
+        card.style.borderColor = isVictory ? 'rgba(251, 191, 36, 0.4)' : 'rgba(220, 38, 38, 0.3)';
+    }
+
+    const icon = document.querySelector('.death-icon');
+    if (icon) {
+        icon.innerHTML = isVictory 
+            ? '<i class="fa-solid fa-trophy" style="font-size:2.5rem;color:#fbbf24"></i>'
+            : '<i class="fa-solid fa-skull-crossbones" style="font-size:2.5rem;color:#ef4444"></i>';
+        icon.style.background = isVictory ? 'rgba(251,191,36,0.1)' : 'rgba(127,29,29,0.3)';
+        icon.style.borderColor = isVictory ? 'rgba(251,191,36,0.4)' : 'rgba(239,68,68,0.5)';
+    }
+
+    document.getElementById('death-killer-text').textContent = isVictory 
+        ? 'Zničili jste nepřátelský Nexus!' 
+        : 'Váš Nexus byl zničen!';
+        
+    document.getElementById('death-stat-kills').textContent  = state.localPlayer.kills;
+    const elapsed = Math.floor((Date.now() - state.playStartTime) / 1000);
+    document.getElementById('death-stat-time').textContent   = `${Math.floor(elapsed / 60)}:${String(elapsed % 60).padStart(2, '0')}`;
+    
+    document.getElementById('death-screen').style.display    = 'flex';
+    document.getElementById('game-ui').style.display         = 'none';
+
+    await removePlayerFromAppwrite();
 }
