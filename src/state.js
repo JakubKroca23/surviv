@@ -23,6 +23,7 @@ export const state = {
     localPlayer:   null,
     activePlayers: {},   // ostatní hráči (interpolováni)
     rawPlayers:    {},   // poslední Appwrite data
+    aiBots:        [],
 
     // Střely & předměty
     localBullets:   [],

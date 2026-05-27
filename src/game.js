@@ -807,7 +807,7 @@ export function updateGame() {
                 const enemy = state.activePlayers[id];
                 if (enemy.hp <= 0) continue;
                 
-                const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? state.aiBots.find(b => b.id === id)?.teamId : 2);
+                const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? (state.aiBots && state.aiBots.find(b => b.id === id)?.teamId) : 2);
                 if (enemyTeam === shooterTeam) continue;
 
                 if (Math.hypot(b.x - enemy.x, b.y - enemy.y) < 30) {
@@ -920,7 +920,7 @@ export function updateGame() {
         for (const id in state.activePlayers) {
             const enemy = state.activePlayers[id];
             if (enemy.hp > 0) {
-                const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? state.aiBots.find(b => b.id === id)?.teamId : 2);
+                const enemyTeam = enemy.teamId || (id.startsWith('bot_') ? (state.aiBots && state.aiBots.find(b => b.id === id)?.teamId) : 2);
                 if (enemyTeam !== p.teamId) {
                     enemyAlive++;
                 }
@@ -1397,7 +1397,7 @@ export function updateAIBots() {
             const enemy = state.activePlayers[pid];
             if (enemy.hp <= 0) continue;
             
-            const enemyTeam = enemy.teamId || (pid.startsWith('bot_') ? state.aiBots.find(b => b.id === pid)?.teamId : 2);
+            const enemyTeam = enemy.teamId || (pid.startsWith('bot_') ? (state.aiBots && state.aiBots.find(b => b.id === pid)?.teamId) : 2);
             if (enemyTeam === bot.teamId) continue;
 
             const dist = Math.hypot(bot.x - enemy.x, bot.y - enemy.y);
@@ -1481,7 +1481,7 @@ export function updateAIBots() {
                 moveY = 0;
             }
         } else if (bot.isRetreating) {
-            const retreatAngle = Math.atan2(fountainY - bot.y, fountainX - fountainY);
+            const retreatAngle = Math.atan2(fountainY - bot.y, fountainX - bot.x);
             targetAngle = retreatAngle;
             moveX = Math.cos(retreatAngle) * bot.speed;
             moveY = Math.sin(retreatAngle) * bot.speed;
