@@ -8,6 +8,24 @@ const imgCrate = new Image(); imgCrate.src = '/assets/crate.png';
 const imgGround = new Image(); imgGround.src = '/assets/ground.png';
 let groundPattern = null;
 
+function adjustAlpha(color, alpha) {
+    if (!color) return `rgba(255, 255, 255, ${alpha})`;
+    if (color.startsWith('#')) {
+        let hex = color.slice(1);
+        if (hex.length === 3) {
+            hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+        }
+        if (hex.length > 6) {
+            hex = hex.slice(0, 6);
+        }
+        const r = parseInt(hex.slice(0, 2), 16) || 0;
+        const g = parseInt(hex.slice(2, 4), 16) || 0;
+        const b = parseInt(hex.slice(4, 6), 16) || 0;
+        return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+    }
+    return color;
+}
+
 // =============================================
 // RENDERER
 // =============================================
@@ -135,59 +153,45 @@ function drawCrosshair(ctx) {
 // PODLAHA
 // =============================================
 
-let grassPattern = null;
+let neonGridPattern = null;
 
 function drawGround(ctx) {
-    if (!grassPattern) {
+    if (!neonGridPattern) {
         const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = 128;
-        tempCanvas.height = 128;
+        tempCanvas.width = 100;
+        tempCanvas.height = 100;
         const tctx = tempCanvas.getContext('2d');
         
-        // Solid organic base color to eliminate tiled squares/seams
-        tctx.fillStyle = '#14532d'; // Dark lush forest green
-        tctx.fillRect(0, 0, 128, 128);
+        // Dark futuristic slate background
+        tctx.fillStyle = '#0f172a';
+        tctx.fillRect(0, 0, 100, 100);
         
-        // Render detailed procedural grass blades uniformly
-        let seed = 999;
-        const random = () => { const x = Math.sin(seed++) * 10000; return x - Math.floor(x); };
+        // Subtle neon blue grid lines
+        tctx.strokeStyle = 'rgba(59, 130, 246, 0.15)';
+        tctx.lineWidth = 1;
+        tctx.beginPath();
+        tctx.moveTo(0, 0);
+        tctx.lineTo(100, 0);
+        tctx.moveTo(0, 0);
+        tctx.lineTo(0, 100);
+        tctx.stroke();
         
-        // Draw 15 grass tufts per pattern tile
-        for (let i = 0; i < 15; i++) {
-            const gx = random() * 128;
-            const gy = random() * 128;
-            const gl = 4 + random() * 6; // blade length
-            
-            // Subtle variations in green color and soft opacity to ensure high blending
-            const rOffset = Math.floor(random() * 12);
-            const gOffset = 115 + Math.floor(random() * 25);
-            const bOffset = 40 + Math.floor(random() * 15);
-            tctx.strokeStyle = `rgba(${rOffset}, ${gOffset}, ${bOffset}, 0.28)`;
-            tctx.lineWidth = 1.2;
-            
-            // Left blade
-            tctx.beginPath();
-            tctx.moveTo(gx, gy);
-            tctx.quadraticCurveTo(gx - 2, gy - gl, gx - 4, gy - gl * 0.9);
-            tctx.stroke();
-            
-            // Center blade
-            tctx.beginPath();
-            tctx.moveTo(gx, gy);
-            tctx.quadraticCurveTo(gx, gy - gl * 1.2, gx, gy - gl * 1.1);
-            tctx.stroke();
-            
-            // Right blade
-            tctx.beginPath();
-            tctx.moveTo(gx, gy);
-            tctx.quadraticCurveTo(gx + 2, gy - gl, gx + 4, gy - gl * 0.9);
-            tctx.stroke();
-        }
-        grassPattern = ctx.createPattern(tempCanvas, 'repeat');
+        // Glowing connection dots at intersections
+        tctx.fillStyle = 'rgba(59, 130, 246, 0.4)';
+        tctx.beginPath();
+        tctx.arc(0, 0, 2.5, 0, Math.PI * 2);
+        tctx.fill();
+        
+        neonGridPattern = ctx.createPattern(tempCanvas, 'repeat');
     }
     
-    ctx.fillStyle = grassPattern;
+    ctx.fillStyle = neonGridPattern;
     ctx.fillRect(0, 0, MAP_SIZE, MAP_SIZE);
+
+    // Dynamic neon boundary outline
+    ctx.strokeStyle = '#3b82f6';
+    ctx.lineWidth = 8;
+    ctx.strokeRect(0, 0, MAP_SIZE, MAP_SIZE);
 }
 
 // =============================================
@@ -233,6 +237,13 @@ function drawTrunksAndRocks(ctx) {
             const r = obs.radius;
             ctx.save();
             ctx.translate(obs.x, obs.y);
+            
+            // Neon Glow Border
+            ctx.strokeStyle = 'rgba(120, 113, 108, 0.45)';
+            ctx.lineWidth = 8;
+            ctx.beginPath();
+            ctx.ellipse(0, 0, r, r * 0.85, 0.2, 0, Math.PI * 2);
+            ctx.stroke();
             
             // Soft drop shadow
             ctx.fillStyle = 'rgba(0, 0, 0, 0.2)';
@@ -286,6 +297,11 @@ function drawTrunksAndRocks(ctx) {
             ctx.translate(obs.x, obs.y);
             ctx.globalAlpha = 0.5 + (0.5 * hpRatio);
             
+            // Neon Glow Border
+            ctx.strokeStyle = 'rgba(217, 119, 6, 0.45)';
+            ctx.lineWidth = 8;
+            ctx.strokeRect(-r, -r, s, s);
+            
             // Drop shadow
             ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
             ctx.fillRect(-r + 4, -r + 5, s, s);
@@ -335,6 +351,13 @@ function drawTrunksAndRocks(ctx) {
             const r = obs.radius;
             ctx.save();
             ctx.translate(obs.x, obs.y);
+            
+            // Neon Glow Trunk
+            ctx.strokeStyle = 'rgba(120, 53, 15, 0.45)';
+            ctx.lineWidth = 6;
+            ctx.beginPath();
+            ctx.arc(0, 0, r * 0.35, 0, Math.PI * 2);
+            ctx.stroke();
             
             // Trunk body
             ctx.fillStyle = '#78350f';
@@ -401,6 +424,13 @@ function drawTreeCanopies(ctx) {
         ctx.save();
         ctx.translate(obs.x, obs.y);
         
+        // Neon Glow Foliage outline
+        ctx.strokeStyle = 'rgba(34, 197, 94, 0.35)';
+        ctx.lineWidth = 12;
+        ctx.beginPath();
+        ctx.arc(0, 0, r * 2.2, 0, Math.PI * 2);
+        ctx.stroke();
+
         // 1. Soft ambient occlusion drop shadow under foliage
         ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
         ctx.beginPath();
@@ -955,13 +985,24 @@ export function drawCharacter(ctx, player, isLocal) {
     ctx.rotate(angle);
 
     // Tělo (Base Color)
-    ctx.fillStyle   = player.isFrozen ? '#7dd3fc' : custom.color; // Ice blue if frozen
+    const baseColor = player.isFrozen ? '#7dd3fc' : custom.color;
+    
+    // Outer Neon Glow Double Stroke
+    ctx.strokeStyle = adjustAlpha(baseColor, 0.45);
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.arc(0, 0, radius, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Inner bright neon circle
+    ctx.fillStyle = player.isFrozen ? '#e0f2fe' : baseColor;
     ctx.beginPath();
     ctx.arc(0, 0, radius, 0, Math.PI * 2);
     ctx.fill();
 
-    ctx.strokeStyle = isLocal ? 'rgba(255,255,255,0.6)' : 'rgba(255,255,255,0.25)';
-    ctx.lineWidth   = 2;
+    // Sharp bright white inner border
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 2.5;
     ctx.stroke();
 
     // Vesta / Decal
