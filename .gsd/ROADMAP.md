@@ -1,10 +1,10 @@
 # ROADMAP.md
 
-> **Current Phase**: Not started
+> **Current Phase**: Phase 2: Tactical Combat Arsenal
 > **Milestone**: v1.0
 
 ## Must-Haves (from SPEC)
-- [ ] Neon glowing graphics engine overhaul with grid textures and dynamic particles.
+- [x] Neon glowing graphics engine overhaul with grid textures and dynamic particles.
 - [ ] AK47, M4A1, and explosive Grenades.
 - [ ] Interactive Scope items (3x, 4x, 8x) and laser sights.
 - [ ] Consumable stimulant (Methamphetamine) with high-risk side effects.
@@ -16,7 +16,7 @@
 ## Phases
 
 ### Phase 1: Foundation & Neon Visual Engine
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: Fix ES module loading bugs and rewrite the Canvas 2D renderer to apply glowing neon styles, floor grids, custom particles (muzzle flashes, blood trails, debris), and screen shake.
 **Requirements**: REQ-01, REQ-02, REQ-09
 
