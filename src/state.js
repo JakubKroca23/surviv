@@ -34,6 +34,8 @@ export const state = {
 
     // Mapa
     mapObstacles: [],
+    vehicles: [],
+
 
     // Herní stav
     gameActive:     false,

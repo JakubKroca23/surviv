@@ -95,10 +95,27 @@ export function setupDesktopControls() {
             }
             if (state.rpgMode) {
                 if (k === 'q') state.localPlayer.castSpellQ();
-                if (k === 'e') state.localPlayer.castSpellE();
+                if (k === 'e') {
+                    if (state.localPlayer.drivingVehicleId) {
+                        if (state.triggerVehicleInteraction) state.triggerVehicleInteraction();
+                    } else {
+                        const nearVehicle = state.vehicles && state.vehicles.some(v => !v.passengerId && Math.hypot(state.localPlayer.x - v.x, state.localPlayer.y - v.y) < 80);
+                        if (nearVehicle && state.triggerVehicleInteraction) {
+                            state.triggerVehicleInteraction();
+                        } else {
+                            state.localPlayer.castSpellE();
+                        }
+                    }
+                }
                 if (k === 'h') state.localPlayer.useHeal();
             } else {
+                if (k === 'e') {
+                    if (state.triggerVehicleInteraction) state.triggerVehicleInteraction();
+                }
                 if (k === 'h' || k === 'q') state.localPlayer.useHeal();
+            }
+            if (k === 'v') {
+                if (state.triggerVehicleInteraction) state.triggerVehicleInteraction();
             }
         }
     });

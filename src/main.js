@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { Player, generateObstacles, generateSpawnedLoot } from './player.js';
+import { Player, generateObstacles, generateSpawnedLoot, initVehicles } from './player.js';
 import { 
     initAppwriteAndJoin, 
     updatePlayerOnAppwrite, 
@@ -134,6 +134,7 @@ window.onload = async () => {
     // Předgeneruj mapu
     state.mapObstacles  = generateObstacles();
     state.itemsOnGround = generateSpawnedLoot();
+    initVehicles();
 
     // Připoj k Appwrite
     await initAppwriteAndJoin();
@@ -164,9 +165,10 @@ window.startLocalGame = () => {
     state.localPlayer.roomId = state.currentRoomId;
     state.localPlayer.teamId = state.teamId;
 
-    // Vygeneruj mapu & loot
+    // Vygeneruj mapu & loot & vozidla
     state.mapObstacles  = generateObstacles();
     state.itemsOnGround = generateSpawnedLoot();
+    initVehicles();
 
     // Vygenerovat AI boty na hostu (doplnit do 20)
     // Pokud je SOLO: spawne se 19 botů, každý v jiném nepřátelském týmu (týmy 2 až 20)
@@ -217,9 +219,10 @@ function resetGame() {
     if (state.sublobbyUnsub) { state.sublobbyUnsub(); state.sublobbyUnsub = null; }
     if (state.messagesUnsub) { state.messagesUnsub(); state.messagesUnsub = null; }
 
-    // Regeneruj mapu
+    // Regeneruj mapu & vozidla
     state.mapObstacles  = generateObstacles();
     state.itemsOnGround = generateSpawnedLoot();
+    state.vehicles      = [];
 }
 
 // =============================================

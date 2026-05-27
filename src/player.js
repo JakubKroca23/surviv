@@ -232,6 +232,7 @@ export class Player {
         this.stimCrashEndTime = 0;
         this.lastShotTime  = 0;
         this.isHealRunning = false;
+        this.drivingVehicleId = null;
         
         // Sledování animace přebíjení
         this.reloadStartTime = 0;
@@ -486,7 +487,7 @@ export class Player {
     }
 
     shoot() {
-        if (this.hp <= 0 || this.isFrozen) return;
+        if (this.hp <= 0 || this.isFrozen || this.drivingVehicleId) return;
         
         if (this.rpgMode) {
             const now = Date.now();
@@ -690,7 +691,7 @@ export class Player {
     }
 
     reload() {
-        if (this.rpgMode || this.currentWeapon === 'fists') return;
+        if (this.rpgMode || this.currentWeapon === 'fists' || this.drivingVehicleId) return;
         const weapon = WEAPONS[this.currentWeapon];
         if (this.ammo[this.currentWeapon] === weapon.ammoMax) return;
         const rTime = weapon.reloadTime || 1200;
@@ -709,7 +710,7 @@ export class Player {
     }
 
     useHeal() {
-        if (this.medkits <= 0 || this.hp >= this.maxHp || this.isHealRunning || this.isFrozen) return;
+        if (this.medkits <= 0 || this.hp >= this.maxHp || this.isHealRunning || this.isFrozen || this.drivingVehicleId) return;
         this.isHealRunning = true;
         setTimeout(() => {
             if (this.hp > 0 && this.medkits > 0) {
@@ -731,3 +732,77 @@ export class Player {
         updateUI();
     }
 }
+
+export function initVehicles() {
+    state.vehicles = [
+        {
+            id: 'v_1_' + Math.random().toString(36).substring(2, 6),
+            x: 1000,
+            y: 1000,
+            angle: 0,
+            speed: 0,
+            maxSpeed: 8.0,
+            maxReverseSpeed: -3.0,
+            acceleration: 0.15,
+            deceleration: 0.05,
+            handling: 0.04,
+            radius: 32,
+            hp: 400,
+            maxHp: 400,
+            passengerId: null,
+            color: '#f59e0b' // Neon orange/amber
+        },
+        {
+            id: 'v_2_' + Math.random().toString(36).substring(2, 6),
+            x: 3000,
+            y: 1000,
+            angle: Math.PI / 2,
+            speed: 0,
+            maxSpeed: 8.0,
+            maxReverseSpeed: -3.0,
+            acceleration: 0.15,
+            deceleration: 0.05,
+            handling: 0.04,
+            radius: 32,
+            hp: 400,
+            maxHp: 400,
+            passengerId: null,
+            color: '#ec4899' // Neon pink
+        },
+        {
+            id: 'v_3_' + Math.random().toString(36).substring(2, 6),
+            x: 1000,
+            y: 3000,
+            angle: -Math.PI / 2,
+            speed: 0,
+            maxSpeed: 8.0,
+            maxReverseSpeed: -3.0,
+            acceleration: 0.15,
+            deceleration: 0.05,
+            handling: 0.04,
+            radius: 32,
+            hp: 400,
+            maxHp: 400,
+            passengerId: null,
+            color: '#06b6d4' // Neon cyan
+        },
+        {
+            id: 'v_4_' + Math.random().toString(36).substring(2, 6),
+            x: 3000,
+            y: 3000,
+            angle: Math.PI,
+            speed: 0,
+            maxSpeed: 8.0,
+            maxReverseSpeed: -3.0,
+            acceleration: 0.15,
+            deceleration: 0.05,
+            handling: 0.04,
+            radius: 32,
+            hp: 400,
+            maxHp: 400,
+            passengerId: null,
+            color: '#10b981' // Neon green
+        }
+    ];
+}
+

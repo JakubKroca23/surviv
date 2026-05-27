@@ -72,6 +72,9 @@ export function drawGame() {
     // 2.7 Granáty
     drawGrenades(ctx);
 
+    // 2.8 Vozidla
+    drawVehicles(ctx);
+
     // 3. Statické překážky kromě korun stromů (kmeny stromů, skály, krabice)
     drawTrunksAndRocks(ctx);
 
@@ -699,6 +702,104 @@ function drawGrenades(ctx) {
     });
 }
 
+export function drawVehicles(ctx) {
+    if (!state.vehicles) return;
+    state.vehicles.forEach(v => {
+        ctx.save();
+        ctx.translate(v.x, v.y);
+        ctx.rotate(v.angle);
+
+        // Draw 4 Wheels
+        ctx.fillStyle = '#0f172a'; // dark wheel charcoal
+        ctx.strokeStyle = adjustAlpha(v.color, 0.5);
+        ctx.lineWidth = 1.5;
+        
+        const wheelOffsets = [
+            { x: -22, y: -18 },
+            { x: 22, y: -18 },
+            { x: -22, y: 18 },
+            { x: 22, y: 18 }
+        ];
+
+        wheelOffsets.forEach(w => {
+            ctx.save();
+            ctx.translate(w.x, w.y);
+            ctx.fillRect(-10, -5, 20, 10);
+            ctx.strokeRect(-10, -5, 20, 10);
+            ctx.restore();
+        });
+
+        // Headlights forward cones (drawn on floor layer)
+        const lightGrad = ctx.createLinearGradient(32, 0, 160, 0);
+        lightGrad.addColorStop(0, 'rgba(255, 255, 255, 0.45)');
+        lightGrad.addColorStop(1, 'rgba(255, 255, 255, 0)');
+        ctx.fillStyle = lightGrad;
+        
+        // Left headlight cone
+        ctx.beginPath();
+        ctx.moveTo(32, -10);
+        ctx.lineTo(160, -45);
+        ctx.lineTo(160, -5);
+        ctx.closePath();
+        ctx.fill();
+
+        // Right headlight cone
+        ctx.beginPath();
+        ctx.moveTo(32, 10);
+        ctx.lineTo(160, 5);
+        ctx.lineTo(160, 45);
+        ctx.closePath();
+        ctx.fill();
+
+        // Glowing Neon Chassis Outline
+        ctx.strokeStyle = adjustAlpha(v.color, 0.45);
+        ctx.lineWidth = 9;
+        ctx.beginPath();
+        ctx.roundRect(-32, -19, 64, 38, 8);
+        ctx.stroke();
+
+        ctx.strokeStyle = v.color;
+        ctx.lineWidth = 3.5;
+        ctx.shadowColor = v.color;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.roundRect(-32, -19, 64, 38, 8);
+        ctx.stroke();
+
+        // Inner glowing core line
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 1.2;
+        ctx.shadowBlur = 0; // disable shadow for sharp core
+        ctx.beginPath();
+        ctx.roundRect(-32, -19, 64, 38, 8);
+        ctx.stroke();
+
+        // Headlight bulbs
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(32, -10, 3, 0, Math.PI * 2);
+        ctx.arc(32, 10, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Tail lights (red circles at back)
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(-32, -12, 2.5, 0, Math.PI * 2);
+        ctx.arc(-32, 12, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Occupied cabin outline (windshield and roof)
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+        ctx.lineWidth = 2.0;
+        ctx.beginPath();
+        ctx.roundRect(-16, -13, 34, 26, 4);
+        ctx.stroke();
+
+        ctx.restore();
+    });
+}
+
+
 // =============================================
 // STŘELY (GLOWING TRACERS)
 // =============================================
@@ -1189,7 +1290,8 @@ export function drawCharacter(ctx, player, isLocal) {
     let gunTipX = radius * 1.0;
     ctx.save();
 
-    if (classIdx !== -1) {
+    if (!player.drivingVehicleId) {
+        if (classIdx !== -1) {
         // RPG MOBA Custom weapon visuals
         if (classIdx === 0) {
             // Warrior Broadsword
@@ -1370,6 +1472,7 @@ export function drawCharacter(ctx, player, isLocal) {
             ctx.restore();
         }
     }
+}
     ctx.restore();
 
     // Hlava

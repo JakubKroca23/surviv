@@ -42,6 +42,146 @@ export function updateGame() {
         }
     }
 
+    // Update vehicles
+    if (state.vehicles) {
+        state.vehicles.forEach(v => {
+            if (v.passengerId === state.playerId) {
+                // Steer and accelerate using player input
+                if (state.isMobile && state.joystickLeft.active) {
+                    const impulse = -state.joystickLeft.vy;
+                    if (impulse > 0.15) {
+                        v.speed = Math.min(v.maxSpeed, v.speed + v.acceleration * impulse);
+                    } else if (impulse < -0.15) {
+                        v.speed = Math.max(v.maxReverseSpeed, v.speed + v.acceleration * impulse);
+                    } else {
+                        v.speed *= 0.96;
+                    }
+                    const steer = state.joystickLeft.vx;
+                    if (Math.abs(steer) > 0.15) {
+                        v.angle += v.handling * steer * Math.sign(v.speed || 1);
+                    }
+                } else {
+                    if (state.keys.w) {
+                        v.speed = Math.min(v.maxSpeed, v.speed + v.acceleration);
+                    } else if (state.keys.s) {
+                        v.speed = Math.max(v.maxReverseSpeed, v.speed - v.acceleration);
+                    } else {
+                        v.speed *= 0.96;
+                        if (Math.abs(v.speed) < 0.05) v.speed = 0;
+                    }
+                    if (state.keys.a) {
+                        v.angle -= v.handling * Math.sign(v.speed || 1);
+                    }
+                    if (state.keys.d) {
+                        v.angle += v.handling * Math.sign(v.speed || 1);
+                    }
+                }
+
+                // Update position
+                v.x += Math.cos(v.angle) * v.speed;
+                v.y += Math.sin(v.angle) * v.speed;
+
+                // Boundaries collision
+                if (v.x < v.radius || v.x > MAP_SIZE - v.radius) {
+                    v.speed = -v.speed * 0.45;
+                    v.x = Math.max(v.radius, Math.min(MAP_SIZE - v.radius, v.x));
+                }
+                if (v.y < v.radius || v.y > MAP_SIZE - v.radius) {
+                    v.speed = -v.speed * 0.45;
+                    v.y = Math.max(v.radius, Math.min(MAP_SIZE - v.radius, v.y));
+                }
+
+                // Obstacles collision (bounce + crush destructibles)
+                state.mapObstacles.forEach(obs => {
+                    if (obs.hp <= 0) return;
+                    const dist = Math.hypot(v.x - obs.x, v.y - obs.y);
+                    const minDist = v.radius + obs.radius;
+                    if (dist < minDist) {
+                        const normalAngle = Math.atan2(v.y - obs.y, v.x - obs.x);
+                        v.x = obs.x + Math.cos(normalAngle) * minDist;
+                        v.y = obs.y + Math.sin(normalAngle) * minDist;
+
+                        const collisionSpeed = Math.abs(v.speed);
+                        v.speed = -v.speed * 0.4;
+
+                        if (collisionSpeed > 2.0) {
+                            const dmg = Math.floor(collisionSpeed * 50);
+                            obs.hp = Math.max(0, obs.hp - dmg);
+                            playSound('punch');
+                            if (state.spawnParticles) {
+                                state.spawnParticles(obs.x, obs.y, 8, 'debris', obs.color || '#78716c', { speed: 3.5 });
+                            }
+                            if (state.triggerScreenShake) {
+                                state.triggerScreenShake(collisionSpeed * 1.5);
+                            }
+                            if (obs.hp <= 0 && state.localPlayer) {
+                                state.localPlayer.addXp(20);
+                            }
+                        }
+                    }
+                });
+
+                // Collision with AI Bots
+                if (state.aiBots) {
+                    state.aiBots.forEach(bot => {
+                        if (bot.hp <= 0) return;
+                        const dist = Math.hypot(bot.x - v.x, bot.y - v.y);
+                        const minDist = v.radius + bot.radius;
+                        if (dist < minDist) {
+                            const pushAngle = Math.atan2(bot.y - v.y, bot.x - v.x);
+                            bot.x += Math.cos(pushAngle) * 35;
+                            bot.y += Math.sin(pushAngle) * 35;
+
+                            const collisionSpeed = Math.abs(v.speed);
+                            if (collisionSpeed > 1.5) {
+                                const dmg = Math.floor(collisionSpeed * 22);
+                                bot.hp = Math.max(0, bot.hp - dmg);
+                                playSound('hit');
+                                if (state.spawnParticles) {
+                                    state.spawnParticles(bot.x, bot.y, 10, 'blood', '#ef4444', { speed: 4 });
+                                }
+                                if (state.triggerScreenShake) {
+                                    state.triggerScreenShake(collisionSpeed * 2.0);
+                                }
+                                if (bot.hp <= 0 && state.localPlayer) {
+                                    state.localPlayer.addXp(60);
+                                    state.localPlayer.kills++;
+                                    updateUI();
+                                }
+                                if (state.onBotHpUpdate) {
+                                    state.onBotHpUpdate(bot.id, bot.hp, v.passengerId || 'vehicle');
+                                }
+                            }
+                        }
+                    });
+                }
+
+                // Collision with other active players
+                for (const enemyId in state.activePlayers) {
+                    const enemy = state.activePlayers[enemyId];
+                    if (enemy.hp <= 0 || enemyId === state.playerId) continue;
+                    const dist = Math.hypot(enemy.x - v.x, enemy.y - v.y);
+                    const minDist = v.radius + enemy.radius;
+                    if (dist < minDist) {
+                        const pushAngle = Math.atan2(enemy.y - v.y, enemy.x - v.x);
+                        enemy.x += Math.cos(pushAngle) * 35;
+                        enemy.y += Math.sin(pushAngle) * 35;
+
+                        const collisionSpeed = Math.abs(v.speed);
+                        if (collisionSpeed > 1.5) {
+                            const dmg = Math.floor(collisionSpeed * 22);
+                            enemy.hp = Math.max(0, enemy.hp - dmg);
+                            playSound('hit');
+                            if (state.spawnParticles) {
+                                state.spawnParticles(enemy.x, enemy.y, 10, 'blood', '#ef4444', { speed: 4 });
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
     // Update grenades
     if (state.localGrenades) {
         for (let i = state.localGrenades.length - 1; i >= 0; i--) {
@@ -237,7 +377,15 @@ export function updateGame() {
     // 1. Pohyb hráče (pokud není zmražený)
     let mx = 0, my = 0;
     if (!p.isFrozen) {
-        if (p.isLeaping) {
+        if (p.drivingVehicleId) {
+            const drivingVehicle = state.vehicles && state.vehicles.find(v => v.id === p.drivingVehicleId);
+            if (drivingVehicle) {
+                p.x = drivingVehicle.x;
+                p.y = drivingVehicle.y;
+                mx = 0;
+                my = 0;
+            }
+        } else if (p.isLeaping) {
             mx = Math.cos(p.leapAngle) * 12.5;
             my = Math.sin(p.leapAngle) * 12.5;
             if (nowTime >= p.leapEndTime) {
@@ -841,6 +989,53 @@ export function throwLocalGrenade() {
 }
 
 state.throwLocalGrenade = throwLocalGrenade;
+
+export function triggerVehicleInteraction() {
+    const p = state.localPlayer;
+    if (!p || p.hp <= 0) return;
+
+    if (p.drivingVehicleId) {
+        // Exit the vehicle
+        const v = state.vehicles && state.vehicles.find(veh => veh.id === p.drivingVehicleId);
+        if (v) {
+            v.passengerId = null;
+            // Place player to the side of the vehicle
+            p.x = v.x + Math.cos(v.angle + Math.PI / 2) * (v.radius + 20);
+            p.y = v.y + Math.sin(v.angle + Math.PI / 2) * (v.radius + 20);
+            // Limit coordinate within boundary limits
+            p.x = Math.max(p.radius, Math.min(MAP_SIZE - p.radius, p.x));
+            p.y = Math.max(p.radius, Math.min(MAP_SIZE - p.radius, p.y));
+        }
+        p.drivingVehicleId = null;
+        playSound('pickup');
+    } else {
+        // Enter closest vehicle
+        if (!state.vehicles) return;
+        let closestVehicle = null;
+        let closestDist = 80; // maximum range of 80px to board
+        
+        state.vehicles.forEach(v => {
+            if (v.passengerId) return; // already occupied
+            const dist = Math.hypot(p.x - v.x, p.y - v.y);
+            if (dist < closestDist) {
+                closestDist = dist;
+                closestVehicle = v;
+            }
+        });
+        
+        if (closestVehicle) {
+            closestVehicle.passengerId = state.playerId;
+            p.drivingVehicleId = closestVehicle.id;
+            p.x = closestVehicle.x;
+            p.y = closestVehicle.y;
+            playSound('pickup');
+        }
+    }
+    updateUI();
+}
+
+state.triggerVehicleInteraction = triggerVehicleInteraction;
+
 
 export function spawnHitMarker(x, y) {
     state.hitMarkers.push({ x, y, alpha: 1 });
