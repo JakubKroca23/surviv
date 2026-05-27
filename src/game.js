@@ -762,7 +762,7 @@ export function updateGame() {
         }
 
         // Zásah slizů (RPG sub-mode)
-        if (state.rpgMode && state.neutralSlimes && b.ownerId === state.playerId) {
+        if (state.rpgMode && state.neutralSlimes) {
             for (let j = state.neutralSlimes.length - 1; j >= 0; j--) {
                 const s = state.neutralSlimes[j];
                 if (Math.hypot(b.x - s.x, b.y - s.y) < s.radius) {
@@ -775,8 +775,23 @@ export function updateGame() {
                     // Sliz zemřel
                     if (s.hp <= 0) {
                         playSound('pickup');
-                        p.addXp(40); // +40 XP za zničení slizu!
-                        // Drop loot z oběti
+                        if (b.ownerId === state.playerId) {
+                            p.addXp(40);
+                            p.gold += 30;
+                        } else if (b.ownerId.startsWith('bot_') && state.aiBots) {
+                            const localBot = state.aiBots.find(bt => bt.id === b.ownerId);
+                            if (localBot) {
+                                localBot.xp = (localBot.xp || 0) + 40;
+                                localBot.gold = (localBot.gold || 0) + 30;
+                                if (localBot.xp >= localBot.maxXp) {
+                                    localBot.level++;
+                                    localBot.xp -= localBot.maxXp;
+                                    localBot.maxHp = localBot.getMaxHpWithItems();
+                                    localBot.hp = localBot.maxHp;
+                                    localBot.speed = localBot.getSpeedWithItems();
+                                }
+                            }
+                        }
                         spawnLoot(s.x, s.y, Math.random() < 0.35 ? 'medkit' : 'pistol');
                         state.neutralSlimes.splice(j, 1);
                     }
@@ -887,10 +902,15 @@ export function updateGame() {
     // 6. Zóna damage
     const zone = getZoneState();
     if (Math.hypot(p.x - zone.center.x, p.y - zone.center.y) > zone.radius) {
-        if (!p.isShielded) {
-            p.hp = Math.max(0, p.hp - (zone.state === 'collapsing' ? 1.0 : 0.4));
-            updateUI();
-            if (p.hp <= 0) handleDeath('Zóna');
+        if (!p.isShielded && !p.isDead) {
+            const now = Date.now();
+            if (!p.lastZoneDamageTime || now - p.lastZoneDamageTime >= 1000) {
+                p.lastZoneDamageTime = now;
+                const zoneDamage = zone.state === 'collapsing' ? 12 : 5;
+                p.hp = Math.max(0, p.hp - zoneDamage);
+                updateUI();
+                if (p.hp <= 0) handleDeath('Zóna');
+            }
         }
     }
 
@@ -1200,12 +1220,9 @@ export function spawnAIBots(count) {
             color: botColor,
             x: Math.random() * (MAP_SIZE - 400) + 200,
             y: Math.random() * (MAP_SIZE - 400) + 200,
-            hp: 100,
-            maxHp: 100,
             kills: 0,
             currentWeapon: 'rifle',
             angle: Math.random() * Math.PI * 2,
-            speed: 3.2,
             lastShotTime: 0,
             radius: 28,
             roomId: state.currentRoomId,
@@ -1218,8 +1235,40 @@ export function spawnAIBots(count) {
             freezeEndTime: 0,
             isShielded: false,
             shieldEndTime: 0,
-            lastSpellCastTime: 0
+            lastSpellCastTime: 0,
+            medkits: 1,
+            grenades: 0,
+            meth: 0,
+            items: [],
+            gold: 0,
+            xp: 0,
+            maxXp: 100,
+            isHealRunning: false,
+            healEndTime: 0,
+            lastLootTime: 0,
+            lastDodgeTime: 0,
+            lastZoneDamageTime: 0,
+            getMaxHpWithItems: function() {
+                if (!this.rpgMode) return 100;
+                const levelBonus = (this.level - 1) * 20;
+                const warmogBonus = this.items.filter(it => it === 'warmog').length * 100;
+                return 100 + levelBonus + warmogBonus;
+            },
+            getSpeedWithItems: function() {
+                if (!this.rpgMode) return 3.2;
+                const bootsBonus = this.items.filter(it => it === 'boots').length * 0.25;
+                return 3.2 * (1 + bootsBonus);
+            },
+            getDamageMultiplier: function() {
+                if (!this.rpgMode) return 1.0;
+                const ieBonus = this.items.filter(it => it === 'ie').length * 0.30;
+                return 1 + (this.level - 1) * 0.15 + ieBonus;
+            }
         };
+        
+        bot.maxHp = bot.getMaxHpWithItems();
+        bot.hp = bot.maxHp;
+        bot.speed = bot.getSpeedWithItems();
         
         state.aiBots.push(bot);
         updateBotOnAppwrite(bot);
@@ -1261,7 +1310,71 @@ export function updateAIBots() {
         if (bot.isShielded && now >= bot.shieldEndTime) {
             bot.isShielded = false;
         }
-        
+
+        // Ticking heal
+        if (bot.isHealRunning) {
+            if (now >= bot.healEndTime) {
+                bot.hp = Math.min(bot.getMaxHpWithItems(), bot.hp + 50);
+                bot.medkits = Math.max(0, bot.medkits - 1);
+                bot.isHealRunning = false;
+                playSound('heal');
+            }
+        }
+
+        // Gold passive income tick
+        if (bot.rpgMode && (!bot.lastGoldTickTime || now - bot.lastGoldTickTime >= 5000)) {
+            bot.lastGoldTickTime = now;
+            bot.gold = (bot.gold || 0) + 15;
+        }
+
+        // Fountain Shop & retreat logic
+        const fountainX = bot.teamId === 1 ? 300 : 3700;
+        const fountainY = bot.teamId === 1 ? 3700 : 300;
+        const distToFountain = Math.hypot(bot.x - fountainX, bot.y - fountainY);
+
+        if (bot.rpgMode) {
+            // Fountain healing
+            if (distToFountain < 260) {
+                if (bot.hp < bot.maxHp) {
+                    bot.hp = Math.min(bot.maxHp, bot.hp + 0.65);
+                }
+                
+                // Dynamic shopping
+                if (bot.gold >= 150 && !bot.items.includes('boots')) {
+                    bot.items.push('boots');
+                    bot.gold -= 150;
+                    bot.speed = bot.getSpeedWithItems();
+                    playSound('pickup');
+                } else if (bot.gold >= 300 && bot.items.filter(it => it === 'warmog').length < 2) {
+                    bot.items.push('warmog');
+                    bot.gold -= 300;
+                    const oldMax = bot.maxHp;
+                    bot.maxHp = bot.getMaxHpWithItems();
+                    bot.hp += (bot.maxHp - oldMax);
+                    playSound('pickup');
+                } else if (bot.gold >= 250) {
+                    const wantsIE = (bot.classIndex === 0 || bot.classIndex === 2);
+                    const itemToBuy = wantsIE ? 'ie' : 'dc';
+                    if (bot.items.filter(it => it === itemToBuy).length < 2) {
+                        bot.items.push(itemToBuy);
+                        bot.gold -= 250;
+                        playSound('pickup');
+                    }
+                }
+            }
+
+            // Shop Retreat Decisions
+            if (bot.hp < 45 && distToFountain > 600 && !bot.isHealRunning) {
+                bot.isRetreating = true;
+            } else if (bot.gold >= 400 && distToFountain > 800 && !bot.isHealRunning) {
+                bot.isRetreating = true;
+            }
+
+            if (bot.isRetreating && distToFountain < 150) {
+                bot.isRetreating = false;
+            }
+        }
+
         const dToCenter = Math.hypot(bot.x - zone.center.x, bot.y - zone.center.y);
         let moveX = 0;
         let moveY = 0;
@@ -1293,12 +1406,116 @@ export function updateAIBots() {
                 nearestEnemy = enemy;
             }
         }
-        
-        if (nearestEnemy) {
-            targetAngle = Math.atan2(nearestEnemy.y - bot.y, nearestEnemy.x - bot.x);
+
+        // Lov slizů v RPG módu (pokud není nablízku nepřítel)
+        let targetSlime = null;
+        if (bot.rpgMode && !nearestEnemy && state.neutralSlimes) {
+            let minSlimeDist = 600;
+            state.neutralSlimes.forEach(s => {
+                if (s.hp <= 0) return;
+                const dist = Math.hypot(bot.x - s.x, bot.y - s.y);
+                if (dist < minSlimeDist) {
+                    minSlimeDist = dist;
+                    targetSlime = s;
+                }
+            });
+        }
+
+        const activeTarget = nearestEnemy || targetSlime;
+
+        // Cover Seeking & Healing logic
+        if (bot.hp < 50 && bot.medkits > 0 && !bot.isHealRunning) {
+            bot.isHealRunning = true;
+            bot.healEndTime = now + 2000;
+            playSound('heal');
+        }
+
+        let isCoverSeeking = false;
+        let coverX = 0, coverY = 0;
+        if ((bot.hp < 45 || bot.isHealRunning) && state.mapObstacles && activeTarget) {
+            let nearestObs = null;
+            let nearestObsDist = 400;
+            state.mapObstacles.forEach(obs => {
+                if (obs.hp <= 0) return;
+                const d = Math.hypot(bot.x - obs.x, bot.y - obs.y);
+                if (d < nearestObsDist) {
+                    nearestObsDist = d;
+                    nearestObs = obs;
+                }
+            });
+            if (nearestObs) {
+                const dx = nearestObs.x - activeTarget.x;
+                const dy = nearestObs.y - activeTarget.y;
+                const dist = Math.hypot(dx, dy);
+                if (dist > 0) {
+                    coverX = nearestObs.x + (dx / dist) * (nearestObs.radius + bot.radius + 12);
+                    coverY = nearestObs.y + (dy / dist) * (nearestObs.radius + bot.radius + 12);
+                    isCoverSeeking = true;
+                }
+            }
+        }
+
+        // Ground Looting Logic
+        let targetLoot = null;
+        if (!activeTarget && !bot.isHealRunning && !bot.isRetreating && state.itemsOnGround) {
+            let minLootDist = 320;
+            state.itemsOnGround.forEach(item => {
+                const dist = Math.hypot(bot.x - item.x, bot.y - item.y);
+                if (dist < minLootDist) {
+                    minLootDist = dist;
+                    targetLoot = item;
+                }
+            });
+        }
+
+        // Primary Evasion & Steering Routing
+        if (isCoverSeeking) {
+            const coverAngle = Math.atan2(coverY - bot.y, coverX - bot.x);
+            targetAngle = Math.atan2(activeTarget.y - bot.y, activeTarget.x - bot.x); // keep aiming at enemy
+            const distToCover = Math.hypot(coverX - bot.x, coverY - bot.y);
+            if (distToCover > 10) {
+                moveX = Math.cos(coverAngle) * bot.speed;
+                moveY = Math.sin(coverAngle) * bot.speed;
+            } else {
+                moveX = 0;
+                moveY = 0;
+            }
+        } else if (bot.isRetreating) {
+            const retreatAngle = Math.atan2(fountainY - bot.y, fountainX - fountainY);
+            targetAngle = retreatAngle;
+            moveX = Math.cos(retreatAngle) * bot.speed;
+            moveY = Math.sin(retreatAngle) * bot.speed;
+        } else if (targetLoot) {
+            const lootAngle = Math.atan2(targetLoot.y - bot.y, targetLoot.x - bot.x);
+            targetAngle = lootAngle;
+            moveX = Math.cos(lootAngle) * bot.speed;
+            moveY = Math.sin(lootAngle) * bot.speed;
             
-            // Pohyb k cíli
-            if (minDist > 140) {
+            // Pickup check
+            if (Math.hypot(bot.x - targetLoot.x, bot.y - targetLoot.y) < bot.radius + 15) {
+                playSound('pickup');
+                if (targetLoot.type === 'medkit') {
+                    bot.medkits = (bot.medkits || 0) + 1;
+                } else if (targetLoot.type === 'meth') {
+                    bot.meth = (bot.meth || 0) + 1;
+                } else if (targetLoot.type === 'grenade') {
+                    bot.grenades = (bot.grenades || 0) + 1;
+                } else if (targetLoot.type && targetLoot.type.startsWith('scope_')) {
+                    bot.currentScope = targetLoot.type;
+                } else {
+                    bot.currentWeapon = targetLoot.type;
+                }
+                const lootIdx = state.itemsOnGround.indexOf(targetLoot);
+                if (lootIdx !== -1) {
+                    state.itemsOnGround.splice(lootIdx, 1);
+                }
+                targetLoot = null;
+            }
+        } else if (activeTarget) {
+            targetAngle = Math.atan2(activeTarget.y - bot.y, activeTarget.x - bot.x);
+            
+            const targetMinDist = targetSlime ? 65 : 140;
+            if (minDist > targetMinDist) {
                 moveX = Math.cos(targetAngle) * bot.speed;
                 moveY = Math.sin(targetAngle) * bot.speed;
             } else {
@@ -1321,7 +1538,6 @@ export function updateAIBots() {
                         startTime: now,
                         duration: 400
                     });
-                    // Freeze target
                     if (nearestEnemy === state.localPlayer && !state.localPlayer.isShielded) {
                         state.localPlayer.isFrozen = true;
                         state.localPlayer.freezeEndTime = now + 2000;
@@ -1339,7 +1555,7 @@ export function updateAIBots() {
                 bot.lastShotTime = now;
                 
                 if (bot.rpgMode) {
-                    const levelMultiplier = 1 + (bot.level - 1) * 0.15;
+                    const levelMultiplier = bot.getDamageMultiplier();
                     if (bot.classIndex === 0) {
                         // Warrior Melee swing
                         playSound('punch');
@@ -1357,6 +1573,25 @@ export function updateAIBots() {
                             playSound('hit');
                             updateUI();
                             if (state.localPlayer.hp <= 0) handleDeath(bot.id);
+                        } else if (targetSlime && minDist < 90) {
+                            targetSlime.hp -= 16 * levelMultiplier;
+                            spawnHitMarker(targetSlime.x, targetSlime.y);
+                            playSound('hit');
+                            if (targetSlime.hp <= 0) {
+                                playSound('pickup');
+                                bot.xp += 40;
+                                bot.gold += 30;
+                                if (bot.xp >= bot.maxXp) {
+                                    bot.level++;
+                                    bot.xp -= bot.maxXp;
+                                    bot.maxHp = bot.getMaxHpWithItems();
+                                    bot.hp = bot.maxHp;
+                                    bot.speed = bot.getSpeedWithItems();
+                                }
+                                spawnLoot(targetSlime.x, targetSlime.y, Math.random() < 0.35 ? 'medkit' : 'pistol');
+                                const slimeIdx = state.neutralSlimes.indexOf(targetSlime);
+                                if (slimeIdx !== -1) state.neutralSlimes.splice(slimeIdx, 1);
+                            }
                         }
                     } else if (bot.classIndex === 1) {
                         // Mage fireball
@@ -1466,6 +1701,49 @@ export function updateAIBots() {
                 moveY = Math.sin(wanderAngle) * (bot.speed * 0.4);
             }
         }
+
+        // Bullet Dodging Overlay Vector
+        let dodgeVecX = 0, dodgeVecY = 0;
+        let isDodging = false;
+        if (state.localBullets) {
+            state.localBullets.forEach(b => {
+                if (b.ownerId === bot.id) return;
+                const distToBullet = Math.hypot(bot.x - b.x, bot.y - b.y);
+                if (distToBullet < 220) {
+                    const toBotX = bot.x - b.x;
+                    const toBotY = bot.y - b.y;
+                    const bulletSpeed = Math.hypot(b.vx, b.vy);
+                    if (bulletSpeed > 0) {
+                        const proj = (toBotX * b.vx + toBotY * b.vy) / bulletSpeed;
+                        if (proj > 0 && proj < distToBullet) {
+                            const perpDist = Math.abs(toBotX * (-b.vy) + toBotY * b.vx) / bulletSpeed;
+                            if (perpDist < bot.radius + 12) {
+                                const normalX = -b.vy / bulletSpeed;
+                                const normalY = b.vx / bulletSpeed;
+                                const side = (toBotX * normalX + toBotY * normalY) >= 0 ? 1 : -1;
+                                dodgeVecX += normalX * side;
+                                dodgeVecY += normalY * side;
+                                isDodging = true;
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        if (isDodging) {
+            const dodgeSpeed = bot.speed * 1.15;
+            const len = Math.hypot(dodgeVecX, dodgeVecY);
+            if (len > 0) {
+                moveX += (dodgeVecX / len) * dodgeSpeed;
+                moveY += (dodgeVecY / len) * dodgeSpeed;
+            }
+        }
+
+        if (bot.isHealRunning) {
+            moveX *= 0.35;
+            moveY *= 0.35;
+        }
         
         bot.x = Math.max(bot.radius, Math.min(MAP_SIZE - bot.radius, bot.x + moveX));
         bot.y = Math.max(bot.radius, Math.min(MAP_SIZE - bot.radius, bot.y + moveY));
@@ -1488,9 +1766,14 @@ export function updateAIBots() {
         
         if (dToCenter > zone.radius) {
             if (!bot.isShielded) {
-                bot.hp = Math.max(0, bot.hp - (zone.state === 'collapsing' ? 0.8 : 0.35));
-                if (bot.hp <= 0) {
-                    bot.killedBy = 'Zóna';
+                const now = Date.now();
+                if (!bot.lastZoneDamageTime || now - bot.lastZoneDamageTime >= 1000) {
+                    bot.lastZoneDamageTime = now;
+                    const botZoneDamage = zone.state === 'collapsing' ? 10 : 4;
+                    bot.hp = Math.max(0, bot.hp - botZoneDamage);
+                    if (bot.hp <= 0) {
+                        bot.killedBy = 'Zóna';
+                    }
                 }
             }
         }

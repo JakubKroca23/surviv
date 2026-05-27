@@ -36,6 +36,9 @@ export const state = {
     mapObstacles: [],
     vehicles: [],
 
+    // Scopes / Lenses
+    currentScope: '1x',
+    viewportScale: 1.0,
 
     // Herní stav
     gameActive:     false,
