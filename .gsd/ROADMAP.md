@@ -1,6 +1,6 @@
 # ROADMAP.md
 
-> **Current Phase**: Phase 3: Interactive Drivable Vehicles
+> **Current Phase**: Phase 4: Elite AI Bot Upgrade
 > **Milestone**: v1.0
 
 ## Must-Haves (from SPEC)
@@ -8,7 +8,7 @@
 - [x] AK47, M4A1, and explosive Grenades.
 - [x] Interactive Scope items (3x, 4x, 8x) and laser sights.
 - [x] Consumable stimulant (Methamphetamine) with high-risk side effects.
-- [ ] Drivable vehicles with collision run-over mechanics.
+- [x] Drivable vehicles with collision run-over mechanics.
 - [ ] Advanced, cover-seeking, looting, and RPG-capable AI bots.
 
 ---
@@ -27,9 +27,10 @@
 
 
 ### Phase 3: Interactive Drivable Vehicles
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: Implement vehicles that spawn in the arena. Support boarding/unboarding, custom visual sprites, acceleration/braking/steering mechanics, and crushing collision damage against obstacles, players, and bots.
 **Requirements**: REQ-07
+
 
 ### Phase 4: Elite AI Bot Upgrade
 **Status**: ⬜ Not Started
