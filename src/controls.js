@@ -87,6 +87,12 @@ export function setupDesktopControls() {
         if (k === 'd' || k === 'arrowright') state.keys.d = true;
         if (k === 'r' && state.localPlayer) state.localPlayer.reload();
         if (state.localPlayer) {
+            if (k === 'g' && state.throwLocalGrenade) {
+                state.throwLocalGrenade();
+            }
+            if (k === 'f') {
+                state.localPlayer.useMeth();
+            }
             if (state.rpgMode) {
                 if (k === 'q') state.localPlayer.castSpellQ();
                 if (k === 'e') state.localPlayer.castSpellE();

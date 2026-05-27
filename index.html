@@ -98,6 +98,27 @@
         #btn-heal:hover { background: #34d399; }
         #btn-heal:active { transform: scale(0.95); }
         #medkit-count { font-size: 0.55rem; font-weight: 900; }
+        
+        #grenade-btn-wrap { position: absolute; bottom: 18rem; right: 1rem; pointer-events: auto; }
+        #btn-grenade {
+            width: 3rem; height: 3rem; background: #22c55e; border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.15s; color: #0c0a09;
+        }
+        #btn-grenade:hover { background: #4ade80; }
+        #btn-grenade:active { transform: scale(0.95); }
+        #grenade-count { font-size: 0.55rem; font-weight: 900; }
+
+        #meth-btn-wrap { position: absolute; bottom: 22rem; right: 1rem; pointer-events: auto; }
+        #btn-meth {
+            width: 3rem; height: 3rem; background: #a855f7; border: 2px solid rgba(255,255,255,0.2);
+            border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: center;
+            cursor: pointer; transition: all 0.15s; color: #0c0a09;
+        }
+        #btn-meth:hover { background: #c084fc; }
+        #btn-meth:active { transform: scale(0.95); }
+        #meth-count { font-size: 0.55rem; font-weight: 900; }
+
         /* Death screen */
         #death-screen {
             position: absolute; inset: 0; background: rgba(0,0,0,0.85);
@@ -524,6 +545,18 @@
             <button id="btn-heal">
                 <i class="fa-solid fa-prescription-bottle-medical" style="font-size:1.1rem;margin-bottom:2px"></i>
                 <span id="medkit-count">2x</span>
+            </button>
+        </div>
+        <div id="grenade-btn-wrap" style="display:none">
+            <button id="btn-grenade">
+                <i class="fa-solid fa-bomb" style="font-size:1.1rem;margin-bottom:2px"></i>
+                <span id="grenade-count">0x</span>
+            </button>
+        </div>
+        <div id="meth-btn-wrap" style="display:none">
+            <button id="btn-meth">
+                <i class="fa-solid fa-prescription-bottle" style="font-size:1.1rem;margin-bottom:2px"></i>
+                <span id="meth-count">0x</span>
             </button>
         </div>
     </div>

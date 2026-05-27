@@ -10,6 +10,8 @@ let lastUIKills = -1;
 let lastUIWeapon = '';
 let lastUIAmmo = '';
 let lastUIMedkits = -1;
+let lastUIGrenades = -1;
+let lastUIMeth = -1;
 
 export function updateUI() {
     const p = state.localPlayer;
@@ -152,9 +154,29 @@ export function updateUI() {
 
     if (lastUIMedkits !== p.medkits) {
         const healWrap = document.getElementById('heal-btn-wrap');
-        healWrap.style.display = p.medkits > 0 ? '' : 'none';
-        document.getElementById('medkit-count').textContent = `${p.medkits}x`;
+        if (healWrap) {
+            healWrap.style.display = p.medkits > 0 ? '' : 'none';
+            document.getElementById('medkit-count').textContent = `${p.medkits}x`;
+        }
         lastUIMedkits = p.medkits;
+    }
+
+    if (lastUIGrenades !== p.grenades) {
+        const grenadeWrap = document.getElementById('grenade-btn-wrap');
+        if (grenadeWrap) {
+            grenadeWrap.style.display = p.grenades > 0 ? '' : 'none';
+            document.getElementById('grenade-count').textContent = `${p.grenades}x`;
+        }
+        lastUIGrenades = p.grenades;
+    }
+
+    if (lastUIMeth !== p.meth) {
+        const methWrap = document.getElementById('meth-btn-wrap');
+        if (methWrap) {
+            methWrap.style.display = p.meth > 0 ? '' : 'none';
+            document.getElementById('meth-count').textContent = `${p.meth}x`;
+        }
+        lastUIMeth = p.meth;
     }
 }
 

@@ -88,6 +88,23 @@ window.onload = async () => {
         if (state.localPlayer) state.localPlayer.useHeal();
     });
 
+    // Grenade tlačítko
+    const btnGrenade = document.getElementById('btn-grenade');
+    if (btnGrenade) {
+        btnGrenade.addEventListener('click', () => {
+            if (state.throwLocalGrenade) state.throwLocalGrenade();
+        });
+    }
+
+    // Meth tlačítko
+    const btnMeth = document.getElementById('btn-meth');
+    if (btnMeth) {
+        btnMeth.addEventListener('click', () => {
+            if (state.localPlayer) state.localPlayer.useMeth();
+        });
+    }
+
+
     // Spells HUD click triggers
     const btnSpellQ = document.getElementById('btn-spell-q');
     if (btnSpellQ) {

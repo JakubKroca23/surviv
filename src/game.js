@@ -42,6 +42,138 @@ export function updateGame() {
         }
     }
 
+    // Update grenades
+    if (state.localGrenades) {
+        for (let i = state.localGrenades.length - 1; i >= 0; i--) {
+            const g = state.localGrenades[i];
+            g.x += g.vx;
+            g.y += g.vy;
+            g.vx *= 0.96;
+            g.vy *= 0.96;
+            
+            // Map boundaries collision
+            if (g.x < 15 || g.x > MAP_SIZE - 15) {
+                g.vx = -g.vx * 0.6;
+                g.x = Math.max(15, Math.min(MAP_SIZE - 15, g.x));
+            }
+            if (g.y < 15 || g.y > MAP_SIZE - 15) {
+                g.vy = -g.vy * 0.6;
+                g.y = Math.max(15, Math.min(MAP_SIZE - 15, g.y));
+            }
+            
+            // Obstacles collision (bounces)
+            state.mapObstacles.forEach(obs => {
+                if (obs.hp <= 0) return;
+                const dist = Math.hypot(g.x - obs.x, g.y - obs.y);
+                const minDist = obs.radius + 10;
+                if (dist < minDist) {
+                    const normalAngle = Math.atan2(g.y - obs.y, g.x - obs.x);
+                    g.x = obs.x + Math.cos(normalAngle) * minDist;
+                    g.y = obs.y + Math.sin(normalAngle) * minDist;
+                    const speed = Math.hypot(g.vx, g.vy);
+                    g.vx = Math.cos(normalAngle) * speed * 0.6;
+                    g.vy = Math.sin(normalAngle) * speed * 0.6;
+                }
+            });
+            
+            // Timed detonation (2.5s)
+            if (nowTime - g.spawnTime >= g.timer) {
+                playSound('death');
+                
+                // Blast wave particles
+                if (state.spawnParticles) {
+                    state.spawnParticles(g.x, g.y, 16, 'spark', '#f97316', { speed: 6.5, decay: 0.04 });
+                    state.spawnParticles(g.x, g.y, 12, 'debris', '#78716c', { speed: 4.5, radius: 4 });
+                }
+                
+                if (state.triggerScreenShake) {
+                    state.triggerScreenShake(8.5);
+                }
+                
+                // Splash damage (150px radial damage)
+                const damageRadius = 150;
+                
+                // Damage local player
+                if (p.hp > 0) {
+                    const distLocal = Math.hypot(p.x - g.x, p.y - g.y);
+                    if (distLocal < damageRadius) {
+                        const dmg = 80 * (1 - distLocal / damageRadius);
+                        if (!p.isShielded) {
+                            p.hp = Math.max(0, p.hp - dmg);
+                            playSound('hit');
+                            updateUI();
+                            if (p.hp <= 0) handleDeath('Granát');
+                        }
+                    }
+                }
+                
+                // Damage other players & bots
+                for (const enemyId in state.activePlayers) {
+                    const enemy = state.activePlayers[enemyId];
+                    if (enemy.hp <= 0) continue;
+                    const distEnemy = Math.hypot(enemy.x - g.x, enemy.y - g.y);
+                    if (distEnemy < damageRadius) {
+                        const dmg = 80 * (1 - distEnemy / damageRadius);
+                        enemy.hp = Math.max(0, enemy.hp - dmg);
+                        if (enemyId.startsWith('bot_')) {
+                            if (state.aiBots) {
+                                const localBot = state.aiBots.find(b => b.id === enemyId);
+                                if (localBot) {
+                                    localBot.hp = enemy.hp;
+                                    if (enemy.hp <= 0) {
+                                        localBot.killedBy = g.ownerId;
+                                        if (g.ownerId === p.id) {
+                                            p.addXp(60);
+                                            p.kills++;
+                                        }
+                                    }
+                                }
+                            }
+                            updateBotHpInDB(enemyId, enemy.hp, g.ownerId);
+                        }
+                    }
+                }
+                
+                state.localGrenades.splice(i, 1);
+            }
+        }
+    }
+
+    // Stimulant (Methamphetamine) updates
+    if (p.stimActive) {
+        if (nowTime > p.stimEndTime) {
+            p.stimActive = false;
+            p.stimCrashActive = true;
+            p.stimCrashEndTime = nowTime + 6000;
+            p.lastCrashDamageTime = nowTime;
+            updateUI();
+        } else {
+            p.speed = p.rpgMode ? p.getSpeedWithItems() * 1.5 : 4.5 * 1.5;
+            const baseScale = state.currentScope === 'scope_3x' ? 0.75 : (state.currentScope === 'scope_4x' ? 0.60 : (state.currentScope === 'scope_8x' ? 0.40 : 1.0));
+            state.viewportScale = baseScale * 0.78;
+            if (state.spawnParticles && Math.random() < 0.3) {
+                state.spawnParticles(p.x, p.y, 2, 'spark', '#c084fc', { speed: 0.8, decay: 0.05 });
+            }
+        }
+    } else if (p.stimCrashActive) {
+        if (nowTime > p.stimCrashEndTime) {
+            p.stimCrashActive = false;
+            p.speed = p.rpgMode ? p.getSpeedWithItems() : 4.5;
+            const baseScale = state.currentScope === 'scope_3x' ? 0.75 : (state.currentScope === 'scope_4x' ? 0.60 : (state.currentScope === 'scope_8x' ? 0.40 : 1.0));
+            state.viewportScale = baseScale;
+            updateUI();
+        } else {
+            p.speed = p.rpgMode ? p.getSpeedWithItems() * 0.35 : 4.5 * 0.35;
+            if (nowTime - (p.lastCrashDamageTime || 0) >= 500) {
+                p.lastCrashDamageTime = nowTime;
+                p.hp = Math.max(1, p.hp - 2);
+                updateUI();
+            }
+        }
+    } else {
+        p.speed = p.rpgMode ? p.getSpeedWithItems() : 4.5;
+    }
+
     // MOBA Init
     if (state.rpgMode && (!state.mobaStructures || state.mobaStructures.length === 0)) {
         state.mobaStructures = [
@@ -683,6 +815,32 @@ export function spawnLoot(x, y, type) {
         type,
     });
 }
+
+export function throwLocalGrenade() {
+    const p = state.localPlayer;
+    if (!p || p.hp <= 0 || (p.grenades || 0) <= 0) return;
+    p.grenades--;
+    
+    const angle = p.angle;
+    const throwSpeed = 8.5;
+    
+    if (!state.localGrenades) state.localGrenades = [];
+    state.localGrenades.push({
+        id: 'g_' + Math.random().toString(36).substring(2, 9) + '_' + Date.now(),
+        ownerId: p.id,
+        x: p.x + Math.cos(angle) * (p.radius + 15),
+        y: p.y + Math.sin(angle) * (p.radius + 15),
+        vx: Math.cos(angle) * throwSpeed,
+        vy: Math.sin(angle) * throwSpeed,
+        timer: 2500,
+        spawnTime: Date.now()
+    });
+    
+    playSound('punch');
+    updateUI();
+}
+
+state.throwLocalGrenade = throwLocalGrenade;
 
 export function spawnHitMarker(x, y) {
     state.hitMarkers.push({ x, y, alpha: 1 });

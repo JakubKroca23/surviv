@@ -28,6 +28,7 @@ export const state = {
     localBullets:   [],
     hitMarkers:     [],
     itemsOnGround:  [],
+    localGrenades:  [],
     particles:      [],
     screenShake:    { x: 0, y: 0, intensity: 0, decay: 0.88 },
 

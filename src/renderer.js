@@ -37,6 +37,13 @@ export function drawGame() {
     const ctx    = state.ctx;
     const p      = state.localPlayer;
 
+    // Apply stimulant crash visual filter
+    if (p && p.stimCrashActive) {
+        ctx.filter = 'blur(1.8px) saturate(2.4) contrast(1.1)';
+    } else {
+        ctx.filter = 'none';
+    }
+
     const cw = window.innerWidth;
     const ch = window.innerHeight;
     if (canvas.width !== cw) canvas.width = cw;
@@ -56,8 +63,14 @@ export function drawGame() {
     // 2. Zóna
     drawZone(ctx);
 
+    // 2. Zóna
+    drawZone(ctx);
+
     // 2.5 Částice
     drawParticles(ctx);
+
+    // 2.7 Granáty
+    drawGrenades(ctx);
 
     // 3. Statické překážky kromě korun stromů (kmeny stromů, skály, krabice)
     drawTrunksAndRocks(ctx);
@@ -112,6 +125,7 @@ export function drawGame() {
     drawBloodParticles(ctx);
 
     ctx.restore();
+    ctx.filter = 'none'; // reset visual filter for HUD and UI overlays
 
     // Minimap + HUD
     drawMinimap();
@@ -649,6 +663,42 @@ function drawLoot(ctx) {
     });
 }
 
+function drawGrenades(ctx) {
+    if (!state.localGrenades) return;
+    state.localGrenades.forEach(g => {
+        ctx.save();
+        ctx.translate(g.x, g.y);
+        
+        // Glowing blinking outline
+        const elapsed = Date.now() - g.spawnTime;
+        const pulse = Math.sin(elapsed * 0.015) * 2 + 6;
+        ctx.strokeStyle = '#22c55e';
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = '#22c55e';
+        ctx.shadowBlur = pulse;
+        ctx.beginPath();
+        ctx.arc(0, 0, 7.5, 0, Math.PI * 2);
+        ctx.stroke();
+        
+        // Solid body
+        ctx.fillStyle = '#15803d';
+        ctx.beginPath();
+        ctx.arc(0, 0, 6, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Dotted countdown fuse ring
+        ctx.strokeStyle = 'rgba(239, 68, 68, 0.7)';
+        ctx.lineWidth = 1.2;
+        ctx.setLineDash([2, 2]);
+        const progress = Math.max(0, 1 - (elapsed / g.timer));
+        ctx.beginPath();
+        ctx.arc(0, 0, 11, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * progress);
+        ctx.stroke();
+        
+        ctx.restore();
+    });
+}
+
 // =============================================
 // STŘELY (GLOWING TRACERS)
 // =============================================
@@ -1040,6 +1090,19 @@ export function drawCharacter(ctx, player, isLocal) {
     ctx.save();
     ctx.translate(x, y);
     
+    // Draw stimulated glowing rings
+    if (player.stimActive) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(192, 132, 252, 0.65)'; // glowing purple stim ring
+        ctx.lineWidth = 3.5;
+        ctx.shadowColor = '#c084fc';
+        ctx.shadowBlur = 8;
+        ctx.beginPath();
+        ctx.arc(0, 0, radius * 1.3, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.restore();
+    }
+
     // Draw Level Up Golden Halo Glow
     if (player.levelUpGlow && Date.now() < player.levelUpGlow) {
         ctx.save();

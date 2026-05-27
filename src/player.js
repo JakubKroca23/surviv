@@ -224,6 +224,12 @@ export class Player {
             ak47:   WEAPONS.ak47.ammoMax,
         };
         this.medkits       = 1;
+        this.grenades      = 0;
+        this.meth          = 0;
+        this.stimActive    = false;
+        this.stimCrashActive = false;
+        this.stimEndTime   = 0;
+        this.stimCrashEndTime = 0;
         this.lastShotTime  = 0;
         this.isHealRunning = false;
         
@@ -714,5 +720,14 @@ export class Player {
                 updateUI();
             }
         }, 3000);
+    }
+
+    useMeth() {
+        if ((this.meth || 0) <= 0 || this.stimActive || this.stimCrashActive || this.isFrozen || this.hp <= 0) return;
+        this.meth--;
+        this.stimActive = true;
+        this.stimEndTime = Date.now() + 8000;
+        playSound('heal');
+        updateUI();
     }
 }
