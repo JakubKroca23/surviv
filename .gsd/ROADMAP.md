@@ -1,13 +1,13 @@
 # ROADMAP.md
 
-> **Current Phase**: Phase 2: Tactical Combat Arsenal
+> **Current Phase**: Phase 3: Interactive Drivable Vehicles
 > **Milestone**: v1.0
 
 ## Must-Haves (from SPEC)
 - [x] Neon glowing graphics engine overhaul with grid textures and dynamic particles.
-- [ ] AK47, M4A1, and explosive Grenades.
-- [ ] Interactive Scope items (3x, 4x, 8x) and laser sights.
-- [ ] Consumable stimulant (Methamphetamine) with high-risk side effects.
+- [x] AK47, M4A1, and explosive Grenades.
+- [x] Interactive Scope items (3x, 4x, 8x) and laser sights.
+- [x] Consumable stimulant (Methamphetamine) with high-risk side effects.
 - [ ] Drivable vehicles with collision run-over mechanics.
 - [ ] Advanced, cover-seeking, looting, and RPG-capable AI bots.
 
@@ -21,9 +21,10 @@
 **Requirements**: REQ-01, REQ-02, REQ-09
 
 ### Phase 2: Tactical Combat Arsenal
-**Status**: ⬜ Not Started
+**Status**: ✅ Complete
 **Objective**: Build AK47, M4A1, and bouncing explosive Grenades. Implement camera-scaling Scope attachments (3x, 4x, 8x), visible laser sights, and the hyper-stimulant item with custom buffs and post-stim crashes.
 **Requirements**: REQ-03, REQ-04, REQ-05, REQ-06
+
 
 ### Phase 3: Interactive Drivable Vehicles
 **Status**: ⬜ Not Started
