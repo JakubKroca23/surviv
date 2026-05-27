@@ -1451,6 +1451,7 @@ export function drawCharacter(ctx, player, isLocal) {
             }
             ctx.closePath();
             ctx.fill();
+            ctx.restore();
         }
 
         // Draw 3x Scope Laser Aim line
@@ -1472,8 +1473,7 @@ export function drawCharacter(ctx, player, isLocal) {
             ctx.restore();
         }
     }
-}
-    ctx.restore();
+    ctx.restore(); // restore weapon rotation save
 
     // Hlava
     ctx.fillStyle = player.isFrozen ? '#a5f3fc' : custom.color;
